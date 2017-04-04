@@ -23,7 +23,7 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 
-# Email processing report module for Autopsy.
+# Credit card analysis report module for Autopsy.
 #
 # See http://sleuthkit.org/autopsy/docs/api-docs/3.1/index.html for documentation
 
@@ -62,9 +62,9 @@ from org.sleuthkit.datamodel import BlackboardArtifact
 from org.sleuthkit.datamodel import BlackboardAttribute
 
 
-class EmailCCHitsReportModule(GeneralReportModuleAdapter):
+class CCHitsReportModule(GeneralReportModuleAdapter):
 
-    moduleName = "FEA - Email Validation - v 1.0"
+    moduleName = "FEA - Credit Card Validation"
 
     _logger = None
 
@@ -77,10 +77,10 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         return self.moduleName
 
     def getDescription(self):
-        return "Email Hit Reports"
+        return "Credit Card Hit Reports"
 
     def getRelativeFilePath(self):
-        return "FEA-emails-JM.txt"
+        return "FEA-CC-JM.txt"
 
     # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
     # The 'progressBar' object is of type ReportProgressPanel.
@@ -95,25 +95,12 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.setIndeterminate(False)
         progressBar.start()
 
-        # miscellaneous initializations
-        falsePositives = []
-        validEmails = []
-        domainNamesList = []
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
-        emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
-        progressTotal = len(emailArtifacts)
 
-        progressBar.setMaximumProgress(progressTotal + 2)
+        ccArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardArtifact.ARTIFACT_TYPE.TSK_ACCOUNT)
+        progressTotal = len(ccArtifacts)
 
-        # read valid TLD list from IANA
-        try:
-            req = urllib2.Request("https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
-            response = urllib2.urlopen(req)
-            tldListHTML = response.read()
-        except urllib2.HTTPError as e:
-            self.log(Level.INFO, "[JM] error reading TLD list from https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
-        tldListHTML.splitlines()
-        progressBar.increment()
+        progressBar.setMaximumProgress(progressTotal + 1)
 
         artifactCount = 0
 
@@ -127,35 +114,16 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # Write the results to the report file.
         fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
         report = open(fileName, 'w')
-        report.write("Valid emails:\n")
-        for artifactItem in emailArtifacts:
-            for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
-                email = attributeItem.getDisplayString().split(".")
-                #self.log(Level.INFO, "[JM] Email TLD: " + email[-1])
-                if email[-1].upper() in tldListHTML:
-                    if not(attributeItem.getDisplayString() in validEmails):
-                        validEmails.append(attributeItem.getDisplayString())
-                        report.write("%s\n" % attributeItem.getDisplayString())
-                    domain = attributeItem.getDisplayString().split("@")
-                    self.log(Level.INFO, "[JM] Email domain name: " + domain[-1])
-                    if not(domain[-1] in domainNamesList):
-                        domainNamesList.append(domain[-1])
-                else:
-                    #self.log(Level.INFO, "[JM] that's not a valid TLD!")
-                    if not(attributeItem.getDisplayString() in falsePositives):
-                        falsePositives.append(attributeItem.getDisplayString())
+        report.write("Attributes from artifacts\n")
+
+        for artifactItem in ccArtifacts:
+            for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_CARD_NUMBER):
+                self.log(Level.INFO, "[JM] Credit card number: " + attributeItem.getDisplayString())
+                report.write("%s;\n" % attributeItem.getDisplayString())
             artifactCount += 1
             progressBar.increment()
 
-        report.write("False positives:\n")
-        for i in falsePositives:
-            report.write("%s\n" % i)
-
-        report.write("Distinct domain names:\n")
-        for i in domainNamesList:
-            report.write("%s\n" % i)
-
-        report.write("Total artifacts processed = %d\n" % artifactCount)
+        report.write("Artifacts processed = %d" % artifactCount)
         report.close()
         # TODO send email notifying completion?
 
@@ -169,13 +137,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.complete(ReportStatus.COMPLETE)
 
 
-    # *******************************************************************
-    # * Function: check if domain is valid by performing NSLookup on it *
-    # *******************************************************************
-    def isValidDomain(self, domainName):
-        answers = dns.resolver.query(domainName, )
-        return False
-
     # *******************************************
     # * Function: implement config settings GUI *
     # *******************************************
@@ -184,28 +145,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         panel0 = JPanel(GridBagLayout())
 
         gbc = GridBagConstraints()
-        gbc.anchor = GridBagConstraints.NORTHEAST
+        gbc.anchor = GridBagConstraints.NORTH
         gbc.gridx = 0;
         gbc.gridy = 0;
 
 
         cbNSLookup = JCheckBox("Perform NSLookup on email addresses")
+
         panel0.add(cbNSLookup, gbc)
-
-        blacklistLabel = JLabel("Email addresses to excluded (blacklist):")
-        gbc.gridy = 1
-        panel0.add(blacklistLabel, gbc)
-
-        blacklistTextArea = JTextArea()
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        gbc.gridy = 2
-        gbc.ipady = 40
-        panel0.add(blacklistTextArea, gbc)
-
-        cbRefreshCache = JCheckBox("Refresh domain lookup cache")
-        gbc.gridy = 3
-        gbc.ipady = 1
-        panel0.add(cbRefreshCache, gbc)
 
         return panel0
 
