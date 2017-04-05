@@ -126,10 +126,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # display name: Accounts; ID: 39; type name: TSK_ACCOUNT
         # atributo para sets de keywords: TSK_SET_NAME
 
-        # Write the results to the report file.
-        fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
-        report = open(fileName, 'w')
-        report.write("Valid emails:\n")
         for artifactItem in emailArtifacts:
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
                 email = attributeItem.getDisplayString().split(".")
@@ -137,7 +133,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if email[-1].upper() in tldListHTML:
                     if not(attributeItem.getDisplayString() in validEmails):
                         validEmails.append(attributeItem.getDisplayString())
-                        report.write("%s\n" % attributeItem.getDisplayString())
                     domain = attributeItem.getDisplayString().split("@")
                     self.log(Level.INFO, "[JM] Email domain name: " + domain[-1])
                     if not(domain[-1] in domainNamesList):
@@ -165,6 +160,13 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             if domainCheck[-1] in invalidDomains:
                 validEmails.remove(i)
                 falsePositives.append(i)
+
+        # Write the results to the report file.
+        fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
+        report = open(fileName, 'w')
+        report.write("Valid emails:\n")
+        for i in validEmails:
+            report.write("%s\n" % i)
 
         report.write("False positives:\n")
         for i in falsePositives:
