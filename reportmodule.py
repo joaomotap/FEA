@@ -30,7 +30,8 @@
 import os
 import inspect
 import urllib2
-#import dns.resolver
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 from javax.swing import JCheckBox
 from javax.swing import JButton
@@ -99,6 +100,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         falsePositives = []
         validEmails = []
         domainNamesList = []
+        invalidDomains = []
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
         progressTotal = len(emailArtifacts)
@@ -147,17 +149,33 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             artifactCount += 1
             progressBar.increment()
 
+        #TODO get config setting before checking NSLookup
+        for i in domainNamesList:
+            try:
+                inetHost = java.net.InetAddress.getByName(i)
+                hostName = inetHost.getHostName()
+                #self.log(Level.INFO, "[JM] Domain name lookup - hostname: " + hostName)
+            except java.net.UnknownHostException as e:
+                domainNamesList.remove(i)
+                if not(i in invalidDomains):
+                    invalidDomains.append(i)
+                #self.log(Level.INFO, "[JM] Uknown host: " + i)
+        for i in validEmails:
+            domainCheck = i.split("@")
+            if domainCheck[-1] in invalidDomains:
+                validEmails.remove(i)
+                falsePositives.append(i)
+
         report.write("False positives:\n")
         for i in falsePositives:
             report.write("%s\n" % i)
 
-        report.write("Distinct domain names:\n")
+        report.write("Valid distinct domain names:\n")
         for i in domainNamesList:
             report.write("%s\n" % i)
 
         report.write("Total artifacts processed = %d\n" % artifactCount)
         report.close()
-        # TODO send email notifying completion?
 
         # Add the report to the Case, so it is shown in the tree
         Case.getCurrentCase().addReport(fileName, self.moduleName, "Artifact Keyword Count Report");
@@ -185,8 +203,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         gbc = GridBagConstraints()
         gbc.anchor = GridBagConstraints.NORTHEAST
-        gbc.gridx = 0;
-        gbc.gridy = 0;
+        gbc.gridx = 0
+        gbc.gridy = 0
 
 
         cbNSLookup = JCheckBox("Perform NSLookup on email addresses")
