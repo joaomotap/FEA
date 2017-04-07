@@ -62,6 +62,9 @@ from org.sleuthkit.autopsy.casemodule.services import FileManager
 from org.sleuthkit.datamodel import BlackboardArtifact
 from org.sleuthkit.datamodel import BlackboardAttribute
 
+from threading import Thread, InterruptedException
+import time
+
 
 class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
@@ -103,7 +106,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         invalidDomains = []
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
-        progressTotal = len(emailArtifacts)
+        progressTotal = len(emailArtifacts)     # TODO: this might be too large of a number and cause the process to freeze
 
         progressBar.setMaximumProgress(progressTotal + 2)
 
@@ -145,6 +148,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             progressBar.increment()
 
         #TODO get config setting before checking NSLookup
+        #JPanel configPanel = self.getConfigurationPanel()
+
         for i in domainNamesList:
             try:
                 inetHost = java.net.InetAddress.getByName(i)
@@ -192,13 +197,21 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
     # *******************************************************************
     # * Function: check if domain is valid by performing NSLookup on it *
     # *******************************************************************
-    def isValidDomain(self, domainName):
-        answers = dns.resolver.query(domainName, )
-        return False
+    class DomainLookup(Thread):
+
+        def isValidDomain(self, domainName):
+            try:
+                inetHost = java.net.InetAddress.getByName(i)
+                hostName = inetHost.getHostName()
+                #self.log(Level.INFO, "[JM] Domain name lookup - hostname: " + hostName)
+                return True
+            except java.net.UnknownHostException as e:
+                return False
 
     # *******************************************
     # * Function: implement config settings GUI *
     # *******************************************
+
     def getConfigurationPanel(self):
         # TODO: implementar lógica no painel e tratar eventos
         panel0 = JPanel(GridBagLayout())
