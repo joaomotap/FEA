@@ -19,6 +19,7 @@ class DomainLookupTask(Thread):
         self.qu_out_valid = qu_out_valid
         self.qu_out_invalid = qu_out_invalid
     def run(self):
+        # wait for 0-2 seconds before starting task
         sleep(random.uniform(0,2))
         while (not self.qu_in.empty()):
             url = self.qu_in.get(block = True, timeout = 5)

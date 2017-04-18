@@ -1,3 +1,4 @@
+import re
 
 class EmailReport(object):
 
@@ -55,10 +56,13 @@ class EmailReport(object):
             return self.email.split(".")[-1]
 
         def getEmailReportRow(self):
+            alphaCheck = "Ok"
             tldRes = "Failed"
             domainRes = "Failed"
+            if re.search(r'\W+$', self.email.split("@")[0]):
+                alphaCheck = "Failed"
             if self.tldCheck:
                 tldRes = "Ok"
             if self.domainCheck:
                 domainRes = "Ok"
-            return self.email + ";" + self.getDomain() + ";" + self.getTLD() + ";" + tldRes + ";" + domainRes
+            return self.email + ";" + alphaCheck + ";" + self.getDomain() + ";" + self.getTLD() + ";" + tldRes + ";" + domainRes

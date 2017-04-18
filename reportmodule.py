@@ -33,8 +33,9 @@ import urllib2
 import java.net.InetAddress
 import java.net.UnknownHostException
 import time
+import re
 
-from jm_reporting import EmailReport
+#from jm_reporting import EmailReport
 
 from threading import Thread
 from Queue import Queue
@@ -111,7 +112,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.start()
 
         # miscellaneous initializations
-        reportDB = EmailReport()
+        reportDB = self.EmailReport()
         count = 0
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
@@ -135,7 +136,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         report = open(fileName, 'w')
 
         # write csv header row
-        report.write("artifact email;TLD;TLD check;domain;domain check;internet archive check\n")
+        report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain check;internet archive check\n")
 
         # Get Blackboard artifacts
         # Emails:
@@ -258,4 +259,73 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         panel0.add(cbRefreshCache, gbc)
 
         return panel0
+
+
+
+    class EmailReport(object):
+
+        def __init__(self):
+            self.recordList = {}
+            self.recordCount = 0
+
+        def addEmailRecord(self, id, email, tldCheck=None, domainCheck=None):
+            self.recordCount += 1
+            newRecord = self.EmailRecord(email, tldCheck, domainCheck)
+            self.recordList[id] = newRecord
+
+        def getRecordById(self, id):
+            return self.recordList.get(id, default=None)
+
+        def getAllRecords(self):
+            return self.recordList.values()
+
+        def getTotalRecords(self):
+            return self.recordCount
+
+        def getListOfDomains(self):
+            domainNamesList = []
+            for rec in self.recordList.values():
+                if not(rec.getDomain() in domainNamesList):
+                    domainNamesList.append(rec.getDomain())
+            return domainNamesList
+
+        def setDomains(self, domain, lookup):
+            for rec in self.recordList.values():
+                if rec.getDomain() == domain:
+                    rec.setDomainCheck(lookup)
+
+        def updateDomainCheck(self, id, domainCheck):
+            self.recordList[id].setDomainCheck(domainCheck)
+
+        def getReportRows(self):
+            for r in self.recordList.values():
+                yield r.getEmailReportRow()
+
+        class EmailRecord(object):
+            def __init__(self, email, tldCheck, domainCheck):
+                self.email = email
+                self.tldCheck = tldCheck
+                self.domainCheck = domainCheck
+
+            def setDomainCheck(self, domainCheck):
+                self.domainCheck = domainCheck
+
+            def getDomain(self):
+                domain = self.email.split("@")
+                return domain[-1]
+
+            def getTLD(self):
+                return self.email.split(".")[-1]
+
+            def getEmailReportRow(self):
+                alphaCheck = "Ok"
+                tldRes = "Failed"
+                domainRes = "Failed"
+                if (re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None):
+                    alphaCheck = "Failed"
+                if self.tldCheck:
+                    tldRes = "Ok"
+                if self.domainCheck:
+                    domainRes = "Ok"
+                return self.email + ";" + alphaCheck + ";" + self.getDomain() + ";" + self.getTLD() + ";" + tldRes + ";" + domainRes
 
