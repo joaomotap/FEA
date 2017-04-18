@@ -34,6 +34,8 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 import time
 
+from jm_reporting import EmailReport
+
 from threading import Thread
 from Queue import Queue
 from jm_domain_lookup import DomainLookupTask
@@ -109,15 +111,13 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.start()
 
         # miscellaneous initializations
-        falsePositives = []
-        validEmails = []
-        domainNamesList = []
-        invalidDomains = []
+        reportDB = EmailReport()
+        count = 0
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
         progressTotal = len(emailArtifacts)     # TODO: this might be too large of a number and cause the process to freeze
 
-        progressBar.setMaximumProgress(progressTotal + 2)
+        progressBar.setMaximumProgress(progressTotal * 2 + 2)
 
         # read valid TLD list from IANA
         progressBar.updateStatusLabel("Retrieving udpated list of valid TLDs from iana.org")
@@ -130,7 +130,12 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         tldListHTML.splitlines()
         progressBar.increment()
 
-        artifactCount = 0
+        # Open report file for writing
+        fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
+        report = open(fileName, 'w')
+
+        # write csv header row
+        report.write("artifact email;TLD;TLD check;domain;domain check;internet archive check\n")
 
         # Get Blackboard artifacts
         # Emails:
@@ -140,23 +145,24 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # atributo para sets de keywords: TSK_SET_NAME
         
         progressBar.updateStatusLabel("Retrieving emails from Autopsy blackboard")
-        
+
         for artifactItem in emailArtifacts:
+
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
+                count += 1
+                tldFlag = False
+
                 email = attributeItem.getDisplayString().split(".")
-                #self.log(Level.INFO, "[JM] Email TLD: " + email[-1])
+
                 if email[-1].upper() in tldListHTML:
-                    if not(attributeItem.getDisplayString() in validEmails):
-                        validEmails.append(attributeItem.getDisplayString())
-                    domain = attributeItem.getDisplayString().split("@")
-                    #self.log(Level.INFO, "[JM] Email domain name: " + domain[-1])
-                    if not(domain[-1] in domainNamesList):
-                        domainNamesList.append(domain[-1])
+                    tldFlag = True
+
+                reportDB.addEmailRecord(count, attributeItem.getDisplayString(), tldCheck=tldFlag)
+                if tldFlag:
+                    self.log(Level.INFO, "[JM] adding record to report. Count = " + str(count) + "; email = " + attributeItem.getDisplayString() + "; tldCheck = True")
                 else:
-                    #self.log(Level.INFO, "[JM] that's not a valid TLD!")
-                    if not(attributeItem.getDisplayString() in falsePositives):
-                        falsePositives.append(attributeItem.getDisplayString())
-            artifactCount += 1
+                    self.log(Level.INFO, "[JM] adding record to report. Count = " + str(count) + "; email = " + attributeItem.getDisplayString() + "; tldCheck = False")
+
             progressBar.increment()
 
         #TODO get config setting before checking NSLookup
@@ -165,14 +171,15 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         #*******************************************************
         #* Domain Name Lookup - Multithreaded                  *
         #*******************************************************
-        
+
         progressBar.updateStatusLabel("Verifying valid domains in email addresses")
         
         q_in = Queue()
         q_out_valid = Queue()
         q_out_invalid = Queue()
-        for url in domainNamesList:
+        for url in reportDB.getListOfDomains():
             q_in.put(url, block = True, timeout = 5)
+            #self.log(Level.INFO, "[JM] Adding domain to thread queue: " + url)
         
         self.log(Level.INFO, "[JM] Starting domain lookup threads")
         
@@ -183,47 +190,29 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             thread_pool.append(t)
         
         for t in thread_pool:
+            progressBar.increment()
             t.join()
         
         while not q_out_valid.empty():
             url = q_out_valid.get()
-            if not url in domainNamesList:
-                domainNamesList.append(url)
-            self.log(Level.INFO, "[JM] Valid domain found: " + url)
+            reportDB.setDomains(url, True)
+            #self.log(Level.INFO, "[JM] Valid domain found: " + url)
             
         while not q_out_invalid.empty():
             url = q_out_invalid.get()
-            self.log(Level.INFO, "[JM] Invalid domain found: " + url)
-            invalidDomains.append(url)
-            if url in domainNamesList:
-                domainNamesList.remove(url)
+            #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
+            reportDB.setDomains(url, False)
 
-        # remove emails whose domain lookup failed
-        for i in validEmails:
-            domainCheck = i.split("@")
-            if domainCheck[-1] in invalidDomains:
-                validEmails.remove(i)
-                falsePositives.append(i)
-                
+        #*******************************************************
+        #* Write report to file                                *
+        #*******************************************************
+
         progressBar.updateStatusLabel("Writing report to file")
 
-        # Write the results to the report file.
-        fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
-        report = open(fileName, 'w')
-        
-        report.write("*** Valid emails:\n")
-        for i in validEmails:
-            report.write("%s\n" % i)
+        for row in reportDB.getReportRows():
+            report.write(row)
+            report.write("\n")
 
-        report.write("*** False positives:\n")
-        for i in falsePositives:
-            report.write("%s\n" % i)
-
-        report.write("*** Valid distinct domain names:\n")
-        for i in domainNamesList:
-            report.write("%s\n" % i)
-
-        report.write("*** Total artifacts processed = %d\n" % artifactCount)
         report.close()
 
         # Add the report to the Case, so it is shown in the tree
