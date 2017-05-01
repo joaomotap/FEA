@@ -35,6 +35,7 @@ import java.net.UnknownHostException
 import time
 import re
 import xlwt
+import json
 
 #from jm_reporting import EmailReport
 
@@ -96,6 +97,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
     def getRelativeFilePath(self):
         return "FEA-Email_Validation_Report.csv"
+
 
     # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
     # The 'progressBar' object is of type ReportProgressPanel.
@@ -262,6 +264,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             url = q_out_invalid.get()
             #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
             reportDB.setDomains(url, False)
+            reportDB.setWayback(url)
 
 
         #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
@@ -282,16 +285,24 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         progressBar.updateStatusLabel("Writing report to file")
 
-        for row in reportDB.getReportRows():
+        baseCell = 1
+        
+        for row in reportDB.getUniqueReportRows():
             report.write(row)
             report.write("\n")
+            items = row.split(";")
+            for n in range(7):
+                sheetFalsePositives.write(baseCell,n,items[n])
+            baseCell += 1
 
         report.close()
 
         baseCell = 1
         for rec in reportDB.getListOfValidDomains():
             sheetDomains.write(baseCell, 0, rec)
+            sheetDomains.write(baseCell, 1, reportDB.getHitsForDomain(rec))
             baseCell += 1
+
 
         book.save(fileNameExcel)
         Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
@@ -413,10 +424,22 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                         domainNamesList.append(rec.getDomain())
             return domainNamesList
 
+        def getHitsForDomain(self, domain):
+            count = 0
+            for rec in self.recordList.values():
+                if rec.getDomain() == domain:
+                    count += 1
+            return count
+
         def setDomains(self, domain, lookup):
             for rec in self.recordList.values():
                 if rec.getDomain() == domain:
                     rec.setDomainCheck(lookup)
+
+        def setWayback(self, domain):
+            for rec in self.recordList.values():
+                if rec.getDomain() == domain:
+                    rec.checkWayback()
 
         def updateDomainCheck(self, id, domainCheck):
             self.recordList[id].setDomainCheck(domainCheck)
@@ -425,11 +448,20 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             for r in self.recordList.values():
                 yield r.getEmailReportRow()
 
+        def getUniqueReportRows(self):
+            uniqueList = []
+            for r in self.getReportRows():
+                if not r in uniqueList:
+                    uniqueList.append(r)
+            return uniqueList
+
+
         class EmailRecord(object):
             def __init__(self, email, tldCheck, domainCheck):
                 self.email = email
                 self.tldCheck = tldCheck
                 self.domainCheck = domainCheck
+                self.wb = "n.a."
 
             def setDomainCheck(self, domainCheck):
                 self.domainCheck = domainCheck
@@ -444,6 +476,23 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             def getAlphaCheck(self):
                 return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
 
+            def checkWayback(self):
+                
+                # url for Wayback machine
+                urlWayback = 'http://archive.org/wayback/available'
+
+                if self.domainCheck == False:
+
+                    response = urllib2.urlopen(urlWayback + "?url=" + self.getDomain())
+
+                    wayback_json = json.load(response)
+                    if wayback_json['archived_snapshots']:
+                        closest = wayback_json['archived_snapshots']['closest']
+                        archive_timestamp = closest.get('timestamp', None)
+                        archive_url = closest.get('url', '')
+                        #return (archive_timestamp, archive_url)
+                        self.wb = archive_timestamp + ";" + archive_url
+
             def getEmailReportRow(self):
                 alphaCheck = "Ok"
                 tldRes = "Failed"
@@ -454,5 +503,5 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                     tldRes = "Ok"
                 if self.domainCheck:
                     domainRes = "Ok"
-                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes
+                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes + ";" + self.wb
 
