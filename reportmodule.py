@@ -297,7 +297,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
 
         # Add the report to the Case, so it is shown in the tree
-        Case.getCurrentCase().addReport(fileName, self.moduleName, "Artifact Keyword Count Report");
+        Case.getCurrentCase().addReport(fileName, self.moduleName, "FEA - Email Validation Report (CSV)");
 
         # last step (file write) complete
         progressBar.increment()
@@ -441,15 +441,18 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             def getTLD(self):
                 return self.email.split(".")[-1]
 
+            def getAlphaCheck(self):
+                return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
+
             def getEmailReportRow(self):
                 alphaCheck = "Ok"
                 tldRes = "Failed"
                 domainRes = "Failed"
-                if (re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None):
+                if not self.getAlphaCheck():
                     alphaCheck = "Failed"
                 if self.tldCheck:
                     tldRes = "Ok"
                 if self.domainCheck:
                     domainRes = "Ok"
-                return self.email + ";" + alphaCheck + ";" + self.getDomain() + ";" + self.getTLD() + ";" + tldRes + ";" + domainRes
+                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes
 
