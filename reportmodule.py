@@ -34,6 +34,7 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 import time
 import re
+import xlwt
 
 #from jm_reporting import EmailReport
 
@@ -101,6 +102,19 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
     #   See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1report_1_1_report_progress_panel.html
     def generateReport(self, baseReportDir, progressBar):
 
+
+        #   /$$$$$$           /$$   /$$             
+        #  |_  $$_/          |__/  | $$             
+        #    | $$   /$$$$$$$  /$$ /$$$$$$   /$$$$$$$
+        #    | $$  | $$__  $$| $$|_  $$_/  /$$_____/
+        #    | $$  | $$  \ $$| $$  | $$   |  $$$$$$ 
+        #    | $$  | $$  | $$| $$  | $$ /$$\____  $$
+        #   /$$$$$$| $$  | $$| $$  |  $$$$//$$$$$$$/
+        #  |______/|__/  |__/|__/   \___/ |_______/ 
+        #                                           
+        #                                           
+        #                                           
+
         self.log(Level.INFO, "*****************************************************")
         self.log(Level.INFO, "* [JM] Scraping artifacts from blackboard starting  *")
         self.log(Level.INFO, "*****************************************************")
@@ -131,6 +145,24 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         tldListHTML.splitlines()
         progressBar.increment()
 
+
+        # Create Excel Workbook
+        fileNameExcel = os.path.join(baseReportDir, "teste.xls")
+        book = xlwt.Workbook(encoding="utf-8")
+        sheetDomains = book.add_sheet("Interesting domains")
+        sheetFalsePositives = book.add_sheet("False Positives")
+        styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
+        sheetFalsePositives.write(0,0,"Email", styleRowHeaders)
+        sheetFalsePositives.write(0,1,"Alphanumeric check", styleRowHeaders)
+        sheetFalsePositives.write(0,2,"TLD", styleRowHeaders)
+        sheetFalsePositives.write(0,3,"TLD check", styleRowHeaders)
+        sheetFalsePositives.write(0,4,"Domain", styleRowHeaders)
+        sheetFalsePositives.write(0,5,"Domain check", styleRowHeaders)
+        sheetFalsePositives.write(0,6,"Internet archive check", styleRowHeaders)
+        sheetDomains.write(0,0,"Domain name", styleRowHeaders)
+        sheetDomains.write(0,1,"Hits", styleRowHeaders)
+
+
         # Open report file for writing
         fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
         report = open(fileName, 'w')
@@ -138,6 +170,18 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # write csv header row
         report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain check;internet archive check\n")
 
+
+        #    /$$$$$$              /$$            /$$$$$$              /$$     /$$  /$$$$$$                      /$$             
+        #   /$$__  $$            | $$           /$$__  $$            | $$    |__/ /$$__  $$                    | $$             
+        #  | $$  \__/  /$$$$$$  /$$$$$$        | $$  \ $$  /$$$$$$  /$$$$$$   /$$| $$  \__//$$$$$$   /$$$$$$$ /$$$$$$   /$$$$$$$
+        #  | $$ /$$$$ /$$__  $$|_  $$_/        | $$$$$$$$ /$$__  $$|_  $$_/  | $$| $$$$   |____  $$ /$$_____/|_  $$_/  /$$_____/
+        #  | $$|_  $$| $$$$$$$$  | $$          | $$__  $$| $$  \__/  | $$    | $$| $$_/    /$$$$$$$| $$        | $$   |  $$$$$$ 
+        #  | $$  \ $$| $$_____/  | $$ /$$      | $$  | $$| $$        | $$ /$$| $$| $$     /$$__  $$| $$        | $$ /$$\____  $$
+        #  |  $$$$$$/|  $$$$$$$  |  $$$$/      | $$  | $$| $$        |  $$$$/| $$| $$    |  $$$$$$$|  $$$$$$$  |  $$$$//$$$$$$$/
+        #   \______/  \_______/   \___/        |__/  |__/|__/         \___/  |__/|__/     \_______/ \_______/   \___/ |_______/ 
+        #                                                                                                                       
+        #                                                                                                                       
+        #                                                                                                                       
         # Get Blackboard artifacts
         # Emails:
         # display name: E-Mail Messages; ID: 13; type name: TSK_EMAIL_MSG
@@ -166,8 +210,23 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             progressBar.increment()
 
+
+
+        #   /$$$$$$$  /$$   /$$  /$$$$$$        /$$                           /$$                          
+        #  | $$__  $$| $$$ | $$ /$$__  $$      | $$                          | $$                          
+        #  | $$  \ $$| $$$$| $$| $$  \__/      | $$        /$$$$$$   /$$$$$$ | $$   /$$ /$$   /$$  /$$$$$$ 
+        #  | $$  | $$| $$ $$ $$|  $$$$$$       | $$       /$$__  $$ /$$__  $$| $$  /$$/| $$  | $$ /$$__  $$
+        #  | $$  | $$| $$  $$$$ \____  $$      | $$      | $$  \ $$| $$  \ $$| $$$$$$/ | $$  | $$| $$  \ $$
+        #  | $$  | $$| $$\  $$$ /$$  \ $$      | $$      | $$  | $$| $$  | $$| $$_  $$ | $$  | $$| $$  | $$
+        #  | $$$$$$$/| $$ \  $$|  $$$$$$/      | $$$$$$$$|  $$$$$$/|  $$$$$$/| $$ \  $$|  $$$$$$/| $$$$$$$/
+        #  |_______/ |__/  \__/ \______/       |________/ \______/  \______/ |__/  \__/ \______/ | $$____/ 
+        #                                                                                        | $$      
+        #                                                                                        | $$      
+        #                                                                                        |__/      
+
         #TODO get config setting before checking NSLookup
         #JPanel configPanel = self.getConfigurationPanel()
+
 
         #*******************************************************
         #* Domain Name Lookup - Multithreaded                  *
@@ -204,6 +263,19 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
             reportDB.setDomains(url, False)
 
+
+        #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
+        #  | $$  /$ | $$          |__/  | $$                    | $$__  $$                                          | $$    
+        #  | $$ /$$$| $$  /$$$$$$  /$$ /$$$$$$    /$$$$$$       | $$  \ $$  /$$$$$$   /$$$$$$   /$$$$$$   /$$$$$$  /$$$$$$  
+        #  | $$/$$ $$ $$ /$$__  $$| $$|_  $$_/   /$$__  $$      | $$$$$$$/ /$$__  $$ /$$__  $$ /$$__  $$ /$$__  $$|_  $$_/  
+        #  | $$$$_  $$$$| $$  \__/| $$  | $$    | $$$$$$$$      | $$__  $$| $$$$$$$$| $$  \ $$| $$  \ $$| $$  \__/  | $$    
+        #  | $$$/ \  $$$| $$      | $$  | $$ /$$| $$_____/      | $$  \ $$| $$_____/| $$  | $$| $$  | $$| $$        | $$ /$$
+        #  | $$/   \  $$| $$      | $$  |  $$$$/|  $$$$$$$      | $$  | $$|  $$$$$$$| $$$$$$$/|  $$$$$$/| $$        |  $$$$/
+        #  |__/     \__/|__/      |__/   \___/   \_______/      |__/  |__/ \_______/| $$____/  \______/ |__/         \___/  
+        #                                                                           | $$                                    
+        #                                                                           | $$                                    
+        #                                                                           |__/                                    
+
         #*******************************************************
         #* Write report to file                                *
         #*******************************************************
@@ -216,6 +288,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         report.close()
 
+        baseCell = 1
+        for rec in reportDB.getListOfValidDomains():
+            sheetDomains.write(baseCell, 0, rec)
+            baseCell += 1
+
+        book.save(fileNameExcel)
+        Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
+
         # Add the report to the Case, so it is shown in the tree
         Case.getCurrentCase().addReport(fileName, self.moduleName, "Artifact Keyword Count Report");
 
@@ -226,6 +306,17 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.complete(ReportStatus.COMPLETE)
 
 
+    #    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$$$$$
+    #   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|_  $$_/
+    #  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$  | $$  
+    #  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$  | $$  
+    #  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$  | $$  
+    #  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$  | $$  
+    #  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/ /$$$$$$
+    #   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |______/
+    #                                               /$$  \ $$                                  
+    #                                              |  $$$$$$/                                  
+    #                                               \______/                                   
     # *******************************************
     # * Function: implement config settings GUI *
     # *******************************************
@@ -243,7 +334,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         cbNSLookup = JCheckBox("Perform NSLookup on email addresses")
         panel0.add(cbNSLookup, gbc)
 
-        blacklistLabel = JLabel("Email addresses to excluded (blacklist):")
+        blacklistLabel = JLabel("Email addresses to be excluded (blacklist):")
         gbc.gridy = 1
         panel0.add(blacklistLabel, gbc)
 
@@ -258,9 +349,34 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         gbc.ipady = 1
         panel0.add(cbRefreshCache, gbc)
 
+        cbGenerateExcel = JCheckBox("Generate Excel format report (more detailed)")
+        gbc.gridy = 4
+        panel0.add(cbGenerateExcel, gbc)
+
+        cbGenerateCSV = JCheckBox("Generate CSV format report (plaintext)")
+        gbc.gridy = 5
+        panel0.add(cbGenerateCSV, gbc)
+
         return panel0
 
-
+    #   /$$$$$$$                                            /$$            /$$$$$$  /$$                             
+    #  | $$__  $$                                          | $$           /$$__  $$| $$                             
+    #  | $$  \ $$  /$$$$$$   /$$$$$$   /$$$$$$   /$$$$$$  /$$$$$$        | $$  \__/| $$  /$$$$$$   /$$$$$$$ /$$$$$$$
+    #  | $$$$$$$/ /$$__  $$ /$$__  $$ /$$__  $$ /$$__  $$|_  $$_/        | $$      | $$ |____  $$ /$$_____//$$_____/
+    #  | $$__  $$| $$$$$$$$| $$  \ $$| $$  \ $$| $$  \__/  | $$          | $$      | $$  /$$$$$$$|  $$$$$$|  $$$$$$ 
+    #  | $$  \ $$| $$_____/| $$  | $$| $$  | $$| $$        | $$ /$$      | $$    $$| $$ /$$__  $$ \____  $$\____  $$
+    #  | $$  | $$|  $$$$$$$| $$$$$$$/|  $$$$$$/| $$        |  $$$$/      |  $$$$$$/| $$|  $$$$$$$ /$$$$$$$//$$$$$$$/
+    #  |__/  |__/ \_______/| $$____/  \______/ |__/         \___/         \______/ |__/ \_______/|_______/|_______/ 
+    #                      | $$                                                                                     
+    #                      | $$                                                                                     
+    #                      |__/                                                                                         
+    # ***********************************************************************
+    # * EMAIL REPORT inner class                                            *
+    # *                                                                     *
+    # * Maintains full list of email in a dict structure comprised of       *
+    # * EmailRecord class objects                                           *
+    # *                                                                     *
+    # ***********************************************************************
 
     class EmailReport(object):
 
@@ -270,7 +386,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         def addEmailRecord(self, id, email, tldCheck=None, domainCheck=None):
             self.recordCount += 1
-            newRecord = self.EmailRecord(email, tldCheck, domainCheck)
+            newRecord = self.EmailRecord(email.lower(), tldCheck, domainCheck)
             self.recordList[id] = newRecord
 
         def getRecordById(self, id):
@@ -287,6 +403,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             for rec in self.recordList.values():
                 if not(rec.getDomain() in domainNamesList):
                     domainNamesList.append(rec.getDomain())
+            return domainNamesList
+
+        def getListOfValidDomains(self):
+            domainNamesList = []
+            for rec in self.recordList.values():
+                if not(rec.getDomain() in domainNamesList):
+                    if rec.tldCheck and rec.domainCheck:
+                        domainNamesList.append(rec.getDomain())
             return domainNamesList
 
         def setDomains(self, domain, lookup):
@@ -312,7 +436,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             def getDomain(self):
                 domain = self.email.split("@")
-                return domain[-1]
+                return domain[-1].lower()
 
             def getTLD(self):
                 return self.email.split(".")[-1]
