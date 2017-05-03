@@ -144,7 +144,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             tldListHTML = response.read()
         except urllib2.HTTPError as e:
             self.log(Level.INFO, "[JM] error reading TLD list from https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
-        tldListHTML.splitlines()
+        tldList = tldListHTML.splitlines()
         progressBar.increment()
 
 
@@ -189,9 +189,11 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # display name: E-Mail Messages; ID: 13; type name: TSK_EMAIL_MSG
         # display name: Accounts; ID: 21; type name: TSK_SERVICE_ACCOUNT
         # display name: Accounts; ID: 39; type name: TSK_ACCOUNT
-        # atributo para sets de keywords: TSK_SET_NAME
+        # attribute for sets of keywords: TSK_SET_NAME
         
-        progressBar.updateStatusLabel("Retrieving emails from Autopsy blackboard")
+        progressBar.updateStatusLabel("Retrieving emails from the Autopsy blackboard")
+
+        self.log(Level.INFO, "List of TLDs:\n" + tldListHTML)
 
         for artifactItem in emailArtifacts:
 
@@ -201,14 +203,10 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
                 email = attributeItem.getDisplayString().split(".")
 
-                if email[-1].upper() in tldListHTML:
+                if email[-1].upper() in tldList:
                     tldFlag = True
 
                 reportDB.addEmailRecord(count, attributeItem.getDisplayString(), tldCheck=tldFlag)
-                if tldFlag:
-                    self.log(Level.INFO, "[JM] adding record to report. Count = " + str(count) + "; email = " + attributeItem.getDisplayString() + "; tldCheck = True")
-                else:
-                    self.log(Level.INFO, "[JM] adding record to report. Count = " + str(count) + "; email = " + attributeItem.getDisplayString() + "; tldCheck = False")
 
             progressBar.increment()
 
@@ -239,7 +237,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         q_in = Queue()
         q_out_valid = Queue()
         q_out_invalid = Queue()
-        for url in reportDB.getListOfDomains():
+        for url in reportDB.getListOfUniqueDomains():
             q_in.put(url, block = True, timeout = 5)
             #self.log(Level.INFO, "[JM] Adding domain to thread queue: " + url)
         
@@ -264,7 +262,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             url = q_out_invalid.get()
             #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
             reportDB.setDomains(url, False)
+            progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
             reportDB.setWayback(url)
+            progressBar.increment()
 
 
         #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
@@ -291,7 +291,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             report.write(row)
             report.write("\n")
             items = row.split(";")
-            for n in range(7):
+            for n in range(8):
                 sheetFalsePositives.write(baseCell,n,items[n])
             baseCell += 1
 
@@ -409,10 +409,11 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         def getTotalRecords(self):
             return self.recordCount
 
-        def getListOfDomains(self):
+        def getListOfUniqueDomains(self):
+            # returns list of de-duped list of domains with valid TLDs
             domainNamesList = []
             for rec in self.recordList.values():
-                if not(rec.getDomain() in domainNamesList):
+                if not(rec.getDomain() in domainNamesList) and rec.getTLDCheck():
                     domainNamesList.append(rec.getDomain())
             return domainNamesList
 
@@ -420,7 +421,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             domainNamesList = []
             for rec in self.recordList.values():
                 if not(rec.getDomain() in domainNamesList):
-                    if rec.tldCheck and rec.domainCheck:
+                    if rec.getTLDCheck() and rec.domainCheck:
                         domainNamesList.append(rec.getDomain())
             return domainNamesList
 
@@ -461,7 +462,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 self.email = email
                 self.tldCheck = tldCheck
                 self.domainCheck = domainCheck
-                self.wb = "n.a."
+                self.wb = "n.a.;"
 
             def setDomainCheck(self, domainCheck):
                 self.domainCheck = domainCheck
@@ -472,6 +473,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             def getTLD(self):
                 return self.email.split(".")[-1]
+
+            def getTLDCheck(self):
+                return self.tldCheck
 
             def getAlphaCheck(self):
                 return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
@@ -489,9 +493,11 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                     if wayback_json['archived_snapshots']:
                         closest = wayback_json['archived_snapshots']['closest']
                         archive_timestamp = closest.get('timestamp', None)
-                        archive_url = closest.get('url', '')
+                        archive_url = closest.get('url', 'n.a.')
                         #return (archive_timestamp, archive_url)
                         self.wb = archive_timestamp + ";" + archive_url
+                    else:
+                        self.wb = "No record."
 
             def getEmailReportRow(self):
                 alphaCheck = "Ok"
