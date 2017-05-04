@@ -6,13 +6,14 @@ import urllib2
 import java.net.InetAddress
 import java.net.UnknownHostException
 import random
+import json
 
 from time import sleep
 
 from threading import Thread
 
 
-class DomainLookupTask(Thread):
+class WaybackTask(Thread):
     def __init__ (self, qu_in, qu_out_valid, qu_out_invalid):
         Thread.__init__(self)
         self.qu_in = qu_in
@@ -23,9 +24,17 @@ class DomainLookupTask(Thread):
         sleep(random.uniform(0,2))
         while (not self.qu_in.empty()):
             url = self.qu_in.get(block = True, timeout = 5)
-            try:
-                inetHost = java.net.InetAddress.getByName(url)
-                hostName = inetHost.getHostName()
-                self.qu_out_valid.put(url)
-            except java.net.UnknownHostException as e:
+            # url for Wayback machine
+            urlWayback = 'http://archive.org/wayback/available'
+
+            response = urllib2.urlopen(urlWayback + "?url=" + self.getDomain())
+
+            wayback_json = json.load(response)
+            if wayback_json['archived_snapshots']:
+                closest = wayback_json['archived_snapshots']['closest']
+                archive_timestamp = closest.get('timestamp', None)
+                archive_url = closest.get('url', 'n.a.')
+                res = archive_timestamp + " - " + archive_url
+                self.qu_out_valid.put(url,res)
+            else:
                 self.qu_out_invalid.put(url)

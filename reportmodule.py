@@ -36,12 +36,14 @@ import time
 import re
 import xlwt
 import json
+import random
 
 #from jm_reporting import EmailReport
 
 from threading import Thread
 from Queue import Queue
 from jm_domain_lookup import DomainLookupTask
+from time import sleep
 
 from javax.swing import JCheckBox
 from javax.swing import JButton
@@ -256,16 +258,50 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         while not q_out_valid.empty():
             url = q_out_valid.get()
             reportDB.setDomains(url, True)
-            #self.log(Level.INFO, "[JM] Valid domain found: " + url)
-            
+        
+        thread_pool_wb = list()
+        wb_tasks = []
         while not q_out_invalid.empty():
             url = q_out_invalid.get()
-            #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
-            reportDB.setDomains(url, False)
-            progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
-            reportDB.setWayback(url)
-            progressBar.increment()
+            wb_tasks.append(url)
+            reportDB.setDomains(url, False)    
+            
+#   /$$      /$$                     /$$                           /$$                       /$$                           /$$      
+#  | $$  /$ | $$                    | $$                          | $$                      | $$                          | $$      
+#  | $$ /$$$| $$  /$$$$$$  /$$   /$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$        /$$$$$$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$
+#  | $$/$$ $$ $$ |____  $$| $$  | $$| $$__  $$ |____  $$ /$$_____/| $$  /$$/       /$$_____/| $$__  $$ /$$__  $$ /$$_____/| $$  /$$/
+#  | $$$$_  $$$$  /$$$$$$$| $$  | $$| $$  \ $$  /$$$$$$$| $$      | $$$$$$/       | $$      | $$  \ $$| $$$$$$$$| $$      | $$$$$$/ 
+#  | $$$/ \  $$$ /$$__  $$| $$  | $$| $$  | $$ /$$__  $$| $$      | $$_  $$       | $$      | $$  | $$| $$_____/| $$      | $$_  $$ 
+#  | $$/   \  $$|  $$$$$$$|  $$$$$$$| $$$$$$$/|  $$$$$$$|  $$$$$$$| $$ \  $$      |  $$$$$$$| $$  | $$|  $$$$$$$|  $$$$$$$| $$ \  $$
+#  |__/     \__/ \_______/ \____  $$|_______/  \_______/ \_______/|__/  \__/       \_______/|__/  |__/ \_______/ \_______/|__/  \__/
+#                          /$$  | $$                                                                                                
+#                         |  $$$$$$/                                                                                                
+#                          \______/                                                                                                 
 
+        progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine")
+        progressBar.increment()
+
+        for i in range(self.MAX_THREADS):
+            t = self.WaybackTask(q_in, q_out_valid, q_out_invalid)
+            t.start()
+            thread_pool_wb.append(t)
+
+        for t in thread_pool_wb:
+            progressBar.increment()
+            t.join()
+
+        while not q_out_valid.empty():
+            url = q_out_valid.get()
+            self.log(Level.INFO, "[JM] Valid Wayback record: " + url)
+            reportDB.setWayback(url,resp)
+
+        while not q_out_invalid.empty():
+            url = q_out_invalid.get()
+            self.log(Level.INFO, "[JM] Invalid Wayback record: " + url)
+            reportDB.setWayback(url, "No record.")
+
+
+        
 
         #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
         #  | $$  /$ | $$          |__/  | $$                    | $$__  $$                                          | $$    
@@ -437,10 +473,12 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if rec.getDomain() == domain:
                     rec.setDomainCheck(lookup)
 
-        def setWayback(self, domain):
+        def setWayback(self, domain, timestamp):
             for rec in self.recordList.values():
                 if rec.getDomain() == domain:
-                    rec.checkWayback()
+                    #rec.checkWayback()
+                    rec.setWaybackResult(timestamp)
+
 
         def updateDomainCheck(self, id, domainCheck):
             self.recordList[id].setDomainCheck(domainCheck)
@@ -480,6 +518,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             def getAlphaCheck(self):
                 return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
 
+            def setWaybackResult(self, timestamp):
+                self.wb = timestamp
+
             def checkWayback(self):
                 
                 # url for Wayback machine
@@ -510,4 +551,46 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if self.domainCheck:
                     domainRes = "Ok"
                 return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes + ";" + self.wb
+
+
+#   /$$      /$$                     /$$                           /$$                       /$$                             
+#  | $$  /$ | $$                    | $$                          | $$                      | $$                             
+#  | $$ /$$$| $$  /$$$$$$  /$$   /$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$        /$$$$$$$| $$  /$$$$$$   /$$$$$$$ /$$$$$$$
+#  | $$/$$ $$ $$ |____  $$| $$  | $$| $$__  $$ |____  $$ /$$_____/| $$  /$$/       /$$_____/| $$ |____  $$ /$$_____//$$_____/
+#  | $$$$_  $$$$  /$$$$$$$| $$  | $$| $$  \ $$  /$$$$$$$| $$      | $$$$$$/       | $$      | $$  /$$$$$$$|  $$$$$$|  $$$$$$ 
+#  | $$$/ \  $$$ /$$__  $$| $$  | $$| $$  | $$ /$$__  $$| $$      | $$_  $$       | $$      | $$ /$$__  $$ \____  $$\____  $$
+#  | $$/   \  $$|  $$$$$$$|  $$$$$$$| $$$$$$$/|  $$$$$$$|  $$$$$$$| $$ \  $$      |  $$$$$$$| $$|  $$$$$$$ /$$$$$$$//$$$$$$$/
+#  |__/     \__/ \_______/ \____  $$|_______/  \_______/ \_______/|__/  \__/       \_______/|__/ \_______/|_______/|_______/ 
+#                          /$$  | $$                                                                                         
+#                         |  $$$$$$/                                                                                         
+#                          \______/                                                                                          
+
+
+    class WaybackTask(Thread):
+
+        def __init__ (self, qu_in, qu_out_valid, qu_out_invalid):
+            Thread.__init__(self)
+            self.qu_in = qu_in
+            self.qu_out_valid = qu_out_valid
+            self.qu_out_invalid = qu_out_invalid
+        
+        def run(self):
+            # wait for 0-2 seconds before starting task
+            sleep(random.uniform(0,2))
+            while (not self.qu_in.empty()):
+                url = self.qu_in.get(block = True, timeout = 5)
+                # url for Wayback machine
+                urlWayback = 'http://archive.org/wayback/available'
+
+                response = urllib2.urlopen(urlWayback + "?url=" + self.getDomain())
+
+                wayback_json = json.load(response)
+                if wayback_json['archived_snapshots']:
+                    closest = wayback_json['archived_snapshots']['closest']
+                    archive_timestamp = closest.get('timestamp', None)
+                    archive_url = closest.get('url', 'No URL record.')
+                    res = archive_timestamp + " - " + archive_url
+                    self.qu_out_valid.put(url,res)
+                else:
+                    self.qu_out_invalid.put(url)
 
