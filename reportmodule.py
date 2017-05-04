@@ -25,7 +25,7 @@
 
 # Email processing report module for Autopsy.
 #
-# See http://sleuthkit.org/autopsy/docs/api-docs/3.1/index.html for documentation
+# by João Mota
 
 import os
 import inspect
@@ -193,7 +193,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         
         progressBar.updateStatusLabel("Retrieving emails from the Autopsy blackboard")
 
-        self.log(Level.INFO, "List of TLDs:\n" + tldListHTML)
+        #self.log(Level.INFO, "List of TLDs:\n" + tldListHTML)
 
         for artifactItem in emailArtifacts:
 
@@ -291,7 +291,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             report.write(row)
             report.write("\n")
             items = row.split(";")
-            for n in range(8):
+            for n in range(7):
                 sheetFalsePositives.write(baseCell,n,items[n])
             baseCell += 1
 
