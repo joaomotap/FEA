@@ -36,40 +36,25 @@ import time
 import re
 import xlwt
 import json
-import random
 
 #from jm_reporting import EmailReport
 
 from threading import Thread
 from Queue import Queue
 from jm_domain_lookup import DomainLookupTask
-from time import sleep
-
-from javax.swing import JCheckBox
-from javax.swing import JButton
-from javax.swing import ButtonGroup
-from javax.swing import JComboBox
-#from javax.swing import JRadioButton
-from javax.swing import JList
-from javax.swing import JTextArea
-from javax.swing import JTextField
-from javax.swing import JLabel
-from java.awt import GridLayout
-from java.awt import GridBagLayout
-from java.awt import GridBagConstraints
-from javax.swing import JPanel
-from javax.swing import JScrollPane
-from javax.swing import JFileChooser
-from javax.swing.filechooser import FileNameExtensionFilter
+from jm_fea_config_panel import FEA_ConfigPanel
 
 from java.lang import Class
 from java.lang import System
 from java.util.logging import Level
+from javax.swing import JPanel
 
 from org.sleuthkit.autopsy.casemodule import Case
 from org.sleuthkit.autopsy.casemodule.services import TagsManager
 from org.sleuthkit.autopsy.coreutils import Logger
+from org.sleuthkit.autopsy.coreutils import ModuleSettings
 from org.sleuthkit.autopsy.report import GeneralReportModuleAdapter
+from org.sleuthkit.autopsy.report import DefaultReportConfigurationPanel
 from org.sleuthkit.autopsy.report.ReportProgressPanel import ReportStatus
 from org.sleuthkit.autopsy.casemodule.services import FileManager
 from org.sleuthkit.datamodel import BlackboardArtifact
@@ -85,6 +70,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
     MAX_THREADS = 8
 
     _logger = None
+
+    configPanel = JPanel()
 
     def log(self, level, msg):
         if self._logger == None:
@@ -128,6 +115,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         # configure progress bar
         progressBar.setIndeterminate(False)
         progressBar.start()
+
+        teste = self.configPanel.getNumThreads()
+        self.log(Level.INFO, "[JM]: Number of threads defined in settings: " + str(teste))
+        if self.configPanel.getGenerateXLS:
+            xlsTst = "True"
+        else:
+            xlsTst = "False"
+        self.log(Level.INFO, "[JM]: Generate excel: " + xlsTst)
 
         # miscellaneous initializations
         reportDB = self.EmailReport()
@@ -258,50 +253,16 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         while not q_out_valid.empty():
             url = q_out_valid.get()
             reportDB.setDomains(url, True)
-        
-        thread_pool_wb = list()
-        wb_tasks = []
-        while not q_out_invalid.empty():
-            url = q_out_invalid.get()
-            wb_tasks.append(url)
-            reportDB.setDomains(url, False)    
+            #self.log(Level.INFO, "[JM] Valid domain found: " + url)
             
-#   /$$      /$$                     /$$                           /$$                       /$$                           /$$      
-#  | $$  /$ | $$                    | $$                          | $$                      | $$                          | $$      
-#  | $$ /$$$| $$  /$$$$$$  /$$   /$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$        /$$$$$$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$
-#  | $$/$$ $$ $$ |____  $$| $$  | $$| $$__  $$ |____  $$ /$$_____/| $$  /$$/       /$$_____/| $$__  $$ /$$__  $$ /$$_____/| $$  /$$/
-#  | $$$$_  $$$$  /$$$$$$$| $$  | $$| $$  \ $$  /$$$$$$$| $$      | $$$$$$/       | $$      | $$  \ $$| $$$$$$$$| $$      | $$$$$$/ 
-#  | $$$/ \  $$$ /$$__  $$| $$  | $$| $$  | $$ /$$__  $$| $$      | $$_  $$       | $$      | $$  | $$| $$_____/| $$      | $$_  $$ 
-#  | $$/   \  $$|  $$$$$$$|  $$$$$$$| $$$$$$$/|  $$$$$$$|  $$$$$$$| $$ \  $$      |  $$$$$$$| $$  | $$|  $$$$$$$|  $$$$$$$| $$ \  $$
-#  |__/     \__/ \_______/ \____  $$|_______/  \_______/ \_______/|__/  \__/       \_______/|__/  |__/ \_______/ \_______/|__/  \__/
-#                          /$$  | $$                                                                                                
-#                         |  $$$$$$/                                                                                                
-#                          \______/                                                                                                 
-
-        progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine")
-        progressBar.increment()
-
-        for i in range(self.MAX_THREADS):
-            t = self.WaybackTask(q_in, q_out_valid, q_out_invalid)
-            t.start()
-            thread_pool_wb.append(t)
-
-        for t in thread_pool_wb:
-            progressBar.increment()
-            t.join()
-
-        while not q_out_valid.empty():
-            url = q_out_valid.get()
-            self.log(Level.INFO, "[JM] Valid Wayback record: " + url)
-            reportDB.setWayback(url,resp)
-
         while not q_out_invalid.empty():
             url = q_out_invalid.get()
-            self.log(Level.INFO, "[JM] Invalid Wayback record: " + url)
-            reportDB.setWayback(url, "No record.")
+            #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
+            reportDB.setDomains(url, False)
+            progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
+            reportDB.setWayback(url)
+            progressBar.increment()
 
-
-        
 
         #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
         #  | $$  /$ | $$          |__/  | $$                    | $$__  $$                                          | $$    
@@ -369,42 +330,11 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
     # *******************************************
 
     def getConfigurationPanel(self):
-        # TODO: implementar lógica no painel e tratar eventos
-        panel0 = JPanel(GridBagLayout())
-
-        gbc = GridBagConstraints()
-        gbc.anchor = GridBagConstraints.NORTHEAST
-        gbc.gridx = 0
-        gbc.gridy = 0
+        
+        self.configPanel = FEA_ConfigPanel()
+        return self.configPanel
 
 
-        cbNSLookup = JCheckBox("Perform NSLookup on email addresses")
-        panel0.add(cbNSLookup, gbc)
-
-        blacklistLabel = JLabel("Email addresses to be excluded (blacklist):")
-        gbc.gridy = 1
-        panel0.add(blacklistLabel, gbc)
-
-        blacklistTextArea = JTextArea()
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        gbc.gridy = 2
-        gbc.ipady = 40
-        panel0.add(blacklistTextArea, gbc)
-
-        cbRefreshCache = JCheckBox("Refresh domain lookup cache")
-        gbc.gridy = 3
-        gbc.ipady = 1
-        panel0.add(cbRefreshCache, gbc)
-
-        cbGenerateExcel = JCheckBox("Generate Excel format report (more detailed)")
-        gbc.gridy = 4
-        panel0.add(cbGenerateExcel, gbc)
-
-        cbGenerateCSV = JCheckBox("Generate CSV format report (plaintext)")
-        gbc.gridy = 5
-        panel0.add(cbGenerateCSV, gbc)
-
-        return panel0
 
     #   /$$$$$$$                                            /$$            /$$$$$$  /$$                             
     #  | $$__  $$                                          | $$           /$$__  $$| $$                             
@@ -473,12 +403,10 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if rec.getDomain() == domain:
                     rec.setDomainCheck(lookup)
 
-        def setWayback(self, domain, timestamp):
+        def setWayback(self, domain):
             for rec in self.recordList.values():
                 if rec.getDomain() == domain:
-                    #rec.checkWayback()
-                    rec.setWaybackResult(timestamp)
-
+                    rec.checkWayback()
 
         def updateDomainCheck(self, id, domainCheck):
             self.recordList[id].setDomainCheck(domainCheck)
@@ -518,9 +446,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             def getAlphaCheck(self):
                 return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
 
-            def setWaybackResult(self, timestamp):
-                self.wb = timestamp
-
             def checkWayback(self):
                 
                 # url for Wayback machine
@@ -551,46 +476,4 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if self.domainCheck:
                     domainRes = "Ok"
                 return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes + ";" + self.wb
-
-
-#   /$$      /$$                     /$$                           /$$                       /$$                             
-#  | $$  /$ | $$                    | $$                          | $$                      | $$                             
-#  | $$ /$$$| $$  /$$$$$$  /$$   /$$| $$$$$$$   /$$$$$$   /$$$$$$$| $$   /$$        /$$$$$$$| $$  /$$$$$$   /$$$$$$$ /$$$$$$$
-#  | $$/$$ $$ $$ |____  $$| $$  | $$| $$__  $$ |____  $$ /$$_____/| $$  /$$/       /$$_____/| $$ |____  $$ /$$_____//$$_____/
-#  | $$$$_  $$$$  /$$$$$$$| $$  | $$| $$  \ $$  /$$$$$$$| $$      | $$$$$$/       | $$      | $$  /$$$$$$$|  $$$$$$|  $$$$$$ 
-#  | $$$/ \  $$$ /$$__  $$| $$  | $$| $$  | $$ /$$__  $$| $$      | $$_  $$       | $$      | $$ /$$__  $$ \____  $$\____  $$
-#  | $$/   \  $$|  $$$$$$$|  $$$$$$$| $$$$$$$/|  $$$$$$$|  $$$$$$$| $$ \  $$      |  $$$$$$$| $$|  $$$$$$$ /$$$$$$$//$$$$$$$/
-#  |__/     \__/ \_______/ \____  $$|_______/  \_______/ \_______/|__/  \__/       \_______/|__/ \_______/|_______/|_______/ 
-#                          /$$  | $$                                                                                         
-#                         |  $$$$$$/                                                                                         
-#                          \______/                                                                                          
-
-
-    class WaybackTask(Thread):
-
-        def __init__ (self, qu_in, qu_out_valid, qu_out_invalid):
-            Thread.__init__(self)
-            self.qu_in = qu_in
-            self.qu_out_valid = qu_out_valid
-            self.qu_out_invalid = qu_out_invalid
-        
-        def run(self):
-            # wait for 0-2 seconds before starting task
-            sleep(random.uniform(0,2))
-            while (not self.qu_in.empty()):
-                url = self.qu_in.get(block = True, timeout = 5)
-                # url for Wayback machine
-                urlWayback = 'http://archive.org/wayback/available'
-
-                response = urllib2.urlopen(urlWayback + "?url=" + self.getDomain())
-
-                wayback_json = json.load(response)
-                if wayback_json['archived_snapshots']:
-                    closest = wayback_json['archived_snapshots']['closest']
-                    archive_timestamp = closest.get('timestamp', None)
-                    archive_url = closest.get('url', 'No URL record.')
-                    res = archive_timestamp + " - " + archive_url
-                    self.qu_out_valid.put(url,res)
-                else:
-                    self.qu_out_invalid.put(url)
 
