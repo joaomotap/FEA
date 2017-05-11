@@ -118,14 +118,21 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
         for artifactItem in ccArtifacts:
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_CARD_NUMBER):
-                self.log(Level.INFO, "[JM] Credit card number: " + attributeItem.getDisplayString())
-                report.write("%s;\n" % attributeItem.getDisplayString())
+                ccNumber = attributeItem.getDisplayString()
+                self.log(Level.INFO, "[JM] Credit card number: " + ccNumber)
+                valid = "(valid)"
+                if self.is_luhn_valid(ccNumber):
+                    self.log(Level.INFO, "[JM] CC is valid")
+                else:
+                    self.log(Level.INFO, "[JM] CC is NOT valid")
+                    valid = "(not valid)"
+                report.write("%s %s;\n" % (ccNumber, valid))
             artifactCount += 1
             progressBar.increment()
 
         report.write("Artifacts processed = %d" % artifactCount)
         report.close()
-        # TODO send email notifying completion?
+        
 
         # Add the report to the Case, so it is shown in the tree
         Case.getCurrentCase().addReport(fileName, self.moduleName, "Artifact Keyword Count Report");
@@ -136,6 +143,47 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
         # Call this with ERROR if report was not generated
         progressBar.complete(ReportStatus.COMPLETE)
 
+
+
+#   /$$                 /$$                
+#  | $$                | $$                
+#  | $$       /$$   /$$| $$$$$$$  /$$$$$$$ 
+#  | $$      | $$  | $$| $$__  $$| $$__  $$
+#  | $$      | $$  | $$| $$  \ $$| $$  \ $$
+#  | $$      | $$  | $$| $$  | $$| $$  | $$
+#  | $$$$$$$$|  $$$$$$/| $$  | $$| $$  | $$
+#  |________/ \______/ |__/  |__/|__/  |__/
+#                                          
+#                                          
+#                                          
+
+    def digits_of(self, number):
+        return [int(i) for i in str(number)]
+
+    def luhn_checksum(self, card_number):
+        digits = self.digits_of(card_number)
+        odd_digits = digits[-1::-2]
+        even_digits = digits[-2::-2]
+        total = sum(odd_digits)
+        for digit in even_digits:
+            total += sum(self.digits_of(2 * digit))
+        return total % 10
+
+    def is_luhn_valid(self, card_number):
+        return self.luhn_checksum(card_number) == 0
+
+
+#    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$
+#   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|__/
+#  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$ /$$
+#  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$| $$
+#  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$| $$
+#  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$| $$
+#  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/| $$
+#   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |__/
+#                                               /$$  \ $$                              
+#                                              |  $$$$$$/                              
+#                                               \______/                               
 
     # *******************************************
     # * Function: implement config settings GUI *
@@ -150,7 +198,7 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
         gbc.gridy = 0;
 
 
-        cbNSLookup = JCheckBox("Perform NSLookup on email addresses")
+        cbNSLookup = JCheckBox("Apply Luhn checksum algorithm")
 
         panel0.add(cbNSLookup, gbc)
 

@@ -71,7 +71,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
     _logger = None
 
-    configPanel = JPanel()
+    configPanel = FEA_ConfigPanel()
 
     def log(self, level, msg):
         if self._logger == None:
@@ -116,13 +116,23 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.setIndeterminate(False)
         progressBar.start()
 
-        teste = self.configPanel.getNumThreads()
-        self.log(Level.INFO, "[JM]: Number of threads defined in settings: " + str(teste))
-        if self.configPanel.getGenerateXLS:
-            xlsTst = "True"
-        else:
-            xlsTst = "False"
-        self.log(Level.INFO, "[JM]: Generate excel: " + xlsTst)
+        self.log(Level.INFO, "[JM] Reading config settings")
+        MAX_THREADS = self.configPanel.getNumThreads()
+        self.log(Level.INFO, "[JM] Number of threads for DNS Lookup = " + str(MAX_THREADS))
+
+        generateXLS = self.configPanel.getGenerateXLS()
+        generateCSV = self.configPanel.getGenerateCSV()
+        doNSLookup = self.configPanel.getDoNSLookup()
+        doWBLookup = self.configPanel.getDoWBLookup()
+
+        if generateXLS:
+            self.log(Level.INFO, "[JM] Generate Excel Report selected")
+        if generateCSV:
+            self.log(Level.INFO, "[JM] Generate CSV Report selected")
+        if doNSLookup:
+            self.log(Level.INFO, "[JM] Perform DNS Lookup selected")
+        if doWBLookup:
+            self.log(Level.INFO, "[JM] Perform Wayback Machine Lookup selected")
 
         # miscellaneous initializations
         reportDB = self.EmailReport()
@@ -146,28 +156,30 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
 
         # Create Excel Workbook
-        fileNameExcel = os.path.join(baseReportDir, "teste.xls")
-        book = xlwt.Workbook(encoding="utf-8")
-        sheetDomains = book.add_sheet("Interesting domains")
-        sheetFalsePositives = book.add_sheet("False Positives")
-        styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
-        sheetFalsePositives.write(0,0,"Email", styleRowHeaders)
-        sheetFalsePositives.write(0,1,"Alphanumeric check", styleRowHeaders)
-        sheetFalsePositives.write(0,2,"TLD", styleRowHeaders)
-        sheetFalsePositives.write(0,3,"TLD check", styleRowHeaders)
-        sheetFalsePositives.write(0,4,"Domain", styleRowHeaders)
-        sheetFalsePositives.write(0,5,"Domain check", styleRowHeaders)
-        sheetFalsePositives.write(0,6,"Internet archive check", styleRowHeaders)
-        sheetDomains.write(0,0,"Domain name", styleRowHeaders)
-        sheetDomains.write(0,1,"Hits", styleRowHeaders)
+        if generateXLS:
+            fileNameExcel = os.path.join(baseReportDir, "teste.xls")
+            book = xlwt.Workbook(encoding="utf-8")
+            sheetDomains = book.add_sheet("Interesting domains")
+            sheetFalsePositives = book.add_sheet("False Positives")
+            styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
+            sheetFalsePositives.write(0,0,"Email", styleRowHeaders)
+            sheetFalsePositives.write(0,1,"Alphanumeric check", styleRowHeaders)
+            sheetFalsePositives.write(0,2,"TLD", styleRowHeaders)
+            sheetFalsePositives.write(0,3,"TLD check", styleRowHeaders)
+            sheetFalsePositives.write(0,4,"Domain", styleRowHeaders)
+            sheetFalsePositives.write(0,5,"Domain check", styleRowHeaders)
+            sheetFalsePositives.write(0,6,"Internet archive check", styleRowHeaders)
+            sheetDomains.write(0,0,"Domain name", styleRowHeaders)
+            sheetDomains.write(0,1,"Hits", styleRowHeaders)
 
 
         # Open report file for writing
-        fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
-        report = open(fileName, 'w')
+        if generateCSV:
+            fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
+            report = open(fileName, 'w')
 
-        # write csv header row
-        report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain check;internet archive check\n")
+            # write csv header row
+            report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain check;internet archive check\n")
 
 
         #    /$$$$$$              /$$            /$$$$$$              /$$     /$$  /$$$$$$                      /$$             
@@ -231,37 +243,39 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         progressBar.updateStatusLabel("Verifying valid domains in email addresses")
         
-        q_in = Queue()
-        q_out_valid = Queue()
-        q_out_invalid = Queue()
-        for url in reportDB.getListOfUniqueDomains():
-            q_in.put(url, block = True, timeout = 5)
-            #self.log(Level.INFO, "[JM] Adding domain to thread queue: " + url)
-        
-        self.log(Level.INFO, "[JM] Starting domain lookup threads")
-        
-        thread_pool = list()
-        for i in range(self.MAX_THREADS):
-            t = DomainLookupTask(q_in, q_out_valid, q_out_invalid)
-            t.start()
-            thread_pool.append(t)
-        
-        for t in thread_pool:
-            progressBar.increment()
-            t.join()
-        
-        while not q_out_valid.empty():
-            url = q_out_valid.get()
-            reportDB.setDomains(url, True)
-            #self.log(Level.INFO, "[JM] Valid domain found: " + url)
+        if doNSLookup:
+            q_in = Queue()
+            q_out_valid = Queue()
+            q_out_invalid = Queue()
+            for url in reportDB.getListOfUniqueDomains():
+                q_in.put(url, block = True, timeout = 5)
+                #self.log(Level.INFO, "[JM] Adding domain to thread queue: " + url)
             
-        while not q_out_invalid.empty():
-            url = q_out_invalid.get()
-            #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
-            reportDB.setDomains(url, False)
-            progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
-            reportDB.setWayback(url)
-            progressBar.increment()
+            self.log(Level.INFO, "[JM] Starting domain lookup threads")
+            
+            thread_pool = list()
+            for i in range(self.MAX_THREADS):
+                t = DomainLookupTask(q_in, q_out_valid, q_out_invalid)
+                t.start()
+                thread_pool.append(t)
+            
+            for t in thread_pool:
+                progressBar.increment()
+                t.join()
+            
+            while not q_out_valid.empty():
+                url = q_out_valid.get()
+                reportDB.setDomains(url, True)
+                #self.log(Level.INFO, "[JM] Valid domain found: " + url)
+            
+            while not q_out_invalid.empty():
+                url = q_out_invalid.get()
+                #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
+                reportDB.setDomains(url, False)
+                if doWBLookup:
+                    progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
+                    reportDB.setWayback(url)
+                progressBar.increment()
 
 
         #   /$$      /$$           /$$   /$$                     /$$$$$$$                                            /$$    
@@ -280,32 +294,34 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         #* Write report to file                                *
         #*******************************************************
 
-        progressBar.updateStatusLabel("Writing report to file")
+        progressBar.updateStatusLabel("Writing report to file (if any reports selected)")
 
         baseCell = 1
         
         for row in reportDB.getUniqueReportRows():
-            report.write(row)
-            report.write("\n")
-            items = row.split(";")
-            for n in range(7):
-                sheetFalsePositives.write(baseCell,n,items[n])
+            if generateCSV:
+                report.write(row)
+                report.write("\n")
+            if generateXLS:
+                items = row.split(";")
+                for n in range(7):
+                    sheetFalsePositives.write(baseCell,n,items[n])
             baseCell += 1
 
-        report.close()
+        if generateXLS:
+            baseCell = 1
+            for rec in reportDB.getListOfValidDomains():
+                sheetDomains.write(baseCell, 0, rec)
+                sheetDomains.write(baseCell, 1, reportDB.getHitsForDomain(rec))
+                baseCell += 1
 
-        baseCell = 1
-        for rec in reportDB.getListOfValidDomains():
-            sheetDomains.write(baseCell, 0, rec)
-            sheetDomains.write(baseCell, 1, reportDB.getHitsForDomain(rec))
-            baseCell += 1
-
-
-        book.save(fileNameExcel)
-        Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
+            book.save(fileNameExcel)
+            Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
 
         # Add the report to the Case, so it is shown in the tree
-        Case.getCurrentCase().addReport(fileName, self.moduleName, "FEA - Email Validation Report (CSV)");
+        if generateCSV:
+            report.close()
+            Case.getCurrentCase().addReport(fileName, self.moduleName, "FEA - Email Validation Report (CSV)");
 
         # last step (file write) complete
         progressBar.increment()
@@ -468,7 +484,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             def getEmailReportRow(self):
                 alphaCheck = "Ok"
                 tldRes = "Failed"
-                domainRes = "Failed"
+                domainRes = "n.a."
                 if not self.getAlphaCheck():
                     alphaCheck = "Failed"
                 if self.tldCheck:

@@ -6,6 +6,9 @@
 # Class for storing and retrieving configuration settings for the Forensic Email Analysis Report Module
 # joao.lx@gmail.com
 #
+# Links with example code in Java used as reference:
+# http://www.sleuthkit.org/autopsy/docs/api-docs/4.3/_s_t_i_x_report_module_8java_source.html#l00069
+# http://www.sleuthkit.org/autopsy/docs/api-docs/4.3/_s_t_i_x_report_module_config_panel_8java_source.html
 
 from org.sleuthkit.autopsy.coreutils import ModuleSettings
 from javax.swing import JCheckBox
@@ -35,38 +38,53 @@ class FEA_ConfigPanel(JPanel):
     generateXLS = True
     generateCSV = True
     doNSLookup = True
+    doWBLookup = True
+    cbNSLookup = None
+    cbGenerateExcel = None
+    cbGenerateCSV = None
+    cbWayback = None
 
     def __init__(self):
 
         self.initComponents()
-
-        if (ModuleSettings.getConfigSetting("FEA", "doNSLookup") != None) and (not ModuleSettings.getConfigSetting("FEA","doNSLookup").isEmpty()):
-            if ModuleSettings.getConfigSetting("FEA","doNSLookup").equals(True):
+        
+        # get previous settings selected by the user
+        if (ModuleSettings.getConfigSetting("FEA", "doNSLookup") != None) and (ModuleSettings.getConfigSetting("FEA","doNSLookup") != ""):
+            if ModuleSettings.getConfigSetting("FEA","doNSLookup"):
                 self.cbNSLookup.setSelected(True)
                 self.doNSLookup = True
             else:
                 self.cbNSLookup.setSelected(False)
                 self.doNSLookup = False
 
-        if (ModuleSettings.getConfigSetting("FEA", "generateCSV") != None) and (not ModuleSettings.getConfigSetting("FEA","generateCSV").isEmpty()):
-            if ModuleSettings.getConfigSetting("FEA","generateCSV").equals(True):
+        if (ModuleSettings.getConfigSetting("FEA", "generateCSV") != None) and (ModuleSettings.getConfigSetting("FEA","generateCSV") != ""):
+            if ModuleSettings.getConfigSetting("FEA","generateCSV"):
                 self.cbGenerateCSV.setSelected(True)
                 self.generateCSV = True
             else:
                 self.cbGenerateCSV.setSelected(False)
                 self.generateCSV = False
-        if (ModuleSettings.getConfigSetting("FEA", "generateXLS") != None) and (not ModuleSettings.getConfigSetting("FEA","generateXLS").isEmpty()):
-            if ModuleSettings.getConfigSetting("FEA","generateXLS").equals(True):
+        if (ModuleSettings.getConfigSetting("FEA", "generateXLS") != None) and (ModuleSettings.getConfigSetting("FEA","generateXLS") != ""):
+            if ModuleSettings.getConfigSetting("FEA","generateXLS"):
                 self.cbGenerateExcel.setSelected(True)
                 self.generateXLS = True
             else:
                 self.cbGenerateExcel.setSelected(False)
                 self.generateXLS = False
-        if (ModuleSettings.getConfigSetting("FEA", "numThreads") != None) and (not ModuleSettings.getConfigSetting("FEA","numThreads").isEmpty()):
-            numThreads = ModuleSettings.getConfigSetting("FEA", "numThreads")
+        if (ModuleSettings.getConfigSetting("FEA", "numThreads") != None) and (ModuleSettings.getConfigSetting("FEA","numThreads") != ""):
+            self.numThreads = ModuleSettings.getConfigSetting("FEA", "numThreads")
             self.numberThreadsSlider.setValue(self.numThreads)
+            #self.addStatusLabel("Read number of threads from previous config: " + self.numThreads)
         else:
             self.numThreads = self.numberThreadsSlider.getValue()
+
+    def addStatusLabel(self, msg):
+            gbc = GridBagConstraints()
+            gbc.anchor = GridBagConstraints.NORTHWEST
+            gbc.gridx = 0
+            gbc.gridy = 7
+            lab = JLabel(msg)
+            self.add(lab, gbc)
 
     def getDoNSLookup(self):
         return self.doNSLookup
@@ -76,6 +94,9 @@ class FEA_ConfigPanel(JPanel):
 
     def getGenerateXLS(self):
         return self.generateXLS
+
+    def getDoWBLookup(self):
+        return self.doWBLookup
 
     def getNumThreads(self):
         return self.numThreads
@@ -92,7 +113,7 @@ class FEA_ConfigPanel(JPanel):
         self.add(descriptionLabel, gbc)
 
         gbc.gridy = 1
-        self.cbNSLookup = JCheckBox("Perform NSLookup on email addresses", actionPerformed=self.cbNSLookupActionPerformed)
+        self.cbNSLookup = JCheckBox("Perform DNS Lookup on email domains", actionPerformed=self.cbNSLookupActionPerformed)
         self.cbNSLookup.setSelected(True)
         self.add(self.cbNSLookup, gbc)
 
@@ -140,16 +161,34 @@ class FEA_ConfigPanel(JPanel):
         gbc.gridy = 5
         self.add(self.cbGenerateCSV, gbc)
 
-    def cbNSLookupActionPerformed(event):
+        gbc.gridy = 6
+        self.cbWayback = JCheckBox("Perform Wayback Machine Lookup on email domains (WARNING: can be a slow process!)", actionPerformed=self.cbWaybackActionPerformed)
+        self.cbWayback.setSelected(True)
+        self.add(self.cbWayback, gbc)
+
+    def cbWaybackActionPerformed(self, event):
+        source = event.getSource()
+        if(source.isSelected()):
+            ModuleSettings.setConfigSetting("FEA","doWBLookup","true")
+            self.doWBLookup = True
+        else:
+            ModuleSettings.setConfigSetting("FEA","doNSLookup","false")
+            self.doWBLookup = False
+
+    def cbNSLookupActionPerformed(self, event):
         source = event.getSource()
         if(source.isSelected()):
             ModuleSettings.setConfigSetting("FEA","doNSLookup","true")
             self.doNSLookup = True
+            self.cbWayback.setEnabled(True)
         else:
             ModuleSettings.setConfigSetting("FEA","doNSLookup","false")
             self.doNSLookup = False
+            self.cbWayback.setSelected(False)
+            self.cbWayback.setEnabled(False)
+            self.doWBLookup = False
 
-    def cbGenerateExcelActionPerformed(event):
+    def cbGenerateExcelActionPerformed(self, event):
         source = event.getSource()
         if(source.isSelected()):
             ModuleSettings.setConfigSetting("FEA","generateXLS","true")
@@ -158,7 +197,7 @@ class FEA_ConfigPanel(JPanel):
             ModuleSettings.setConfigSetting("FEA","generateXLS","false")
             self.generateXLS = False
 
-    def cbGenerateCSVActionPerformed(event):
+    def cbGenerateCSVActionPerformed(self, event):
         source = event.getSource()
         if(source.isSelected()):
             ModuleSettings.setConfigSetting("FEA","generateCSV","true")
@@ -167,7 +206,8 @@ class FEA_ConfigPanel(JPanel):
             ModuleSettings.setConfigSetting("FEA","generateCSV","false")
             self.generateCSV = False
 
-    def sliderActionPerformed(event):
+    def sliderActionPerformed(self, event):
         source = event.getSource()
         self.numThreads = source.getValue()
         ModuleSettings.setConfigSetting("FEA","numThreads",self.numThreads)
+        self.addStatusLabel("number of threads set: " + str(self.numThreads))
