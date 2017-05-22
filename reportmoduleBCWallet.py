@@ -61,8 +61,10 @@ from org.sleuthkit.autopsy.casemodule.services import FileManager
 from org.sleuthkit.datamodel import BlackboardArtifact
 from org.sleuthkit.datamodel import BlackboardAttribute
 
+from hashlib import sha256
 
-class CCHitsReportModule(GeneralReportModuleAdapter):
+
+class BCHitsReportModule(GeneralReportModuleAdapter):
 
     moduleName = "FEA - BC Wallet Validation"
 
@@ -80,7 +82,7 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
         return "BC Wallet Hit Reports"
 
     def getRelativeFilePath(self):
-        return "FEA-CC-JM.txt"
+        return "FEA-BC-JM.txt"
 
     # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
     # The 'progressBar' object is of type ReportProgressPanel.
@@ -97,8 +99,9 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
 
-        bcArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardArtifact.ARTIFACT_TYPE.TSK_SET_NAME)
-        progressTotal = len(ccArtifacts)
+        # TODO: the name of the hash list should be retrieved from the GUI settings dialog
+        bcArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "testlist")
+        progressTotal = len(bcArtifacts)
 
         progressBar.setMaximumProgress(progressTotal + 1)
 
@@ -116,17 +119,17 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
         report = open(fileName, 'w')
         report.write("Attributes from artifacts\n")
 
-        for artifactItem in ccArtifacts:
-            for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_CARD_NUMBER):
-                ccNumber = attributeItem.getDisplayString()
-                self.log(Level.INFO, "[JM] Credit card number: " + ccNumber)
+        for artifactItem in bcArtifacts:
+            for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
+                bcAddress = attributeItem.getDisplayString()
+                self.log(Level.INFO, "[JM] Bitcoin Address: " + bcAddress)
                 valid = "(valid)"
-                if self.is_luhn_valid(ccNumber):
-                    self.log(Level.INFO, "[JM] CC is valid")
-                else:
-                    self.log(Level.INFO, "[JM] CC is NOT valid")
+                if not self.check_bc(bcAddress):
                     valid = "(not valid)"
-                report.write("%s %s;\n" % (ccNumber, valid))
+                    self.log(Level.INFO, "[JM] Bitcoin address is not valid")
+                else:
+                    self.log(Level.INFO, "[JM] Bitcoin address is valid")
+                report.write("%s %s;\n" % (bcAddress, valid))
             artifactCount += 1
             progressBar.increment()
 
@@ -167,13 +170,47 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
         gbc = GridBagConstraints()
         gbc.anchor = GridBagConstraints.NORTH
-        gbc.gridx = 0;
-        gbc.gridy = 0;
+        gbc.gridx = 0
+        gbc.gridy = 0
 
 
-        cbNSLookup = JCheckBox("Apply Luhn checksum algorithm")
-
+        cbNSLookup = JCheckBox("Find bitcoin addresses")
         panel0.add(cbNSLookup, gbc)
 
+        gbc.gridy = 1
+        cbHitlist = JTextField("Base list of hashes to analyze")
+        panel0.add(cbHitlist, gbc)
+
+        cbBlockchainCheck = JCheckBox("Query Blockchain.info")
+        panel0.add(cbBlockchainCheck, gbc)
+
         return panel0
+
+
+
+#   /$$$$$$$  /$$   /$$                         /$$                                 /$$       /$$                                       
+#  | $$__  $$|__/  | $$                        |__/                                | $$      | $$                                       
+#  | $$  \ $$ /$$ /$$$$$$    /$$$$$$$  /$$$$$$  /$$ /$$$$$$$         /$$$$$$   /$$$$$$$  /$$$$$$$  /$$$$$$   /$$$$$$   /$$$$$$$ /$$$$$$$
+#  | $$$$$$$ | $$|_  $$_/   /$$_____/ /$$__  $$| $$| $$__  $$       |____  $$ /$$__  $$ /$$__  $$ /$$__  $$ /$$__  $$ /$$_____//$$_____/
+#  | $$__  $$| $$  | $$    | $$      | $$  \ $$| $$| $$  \ $$        /$$$$$$$| $$  | $$| $$  | $$| $$  \__/| $$$$$$$$|  $$$$$$|  $$$$$$ 
+#  | $$  \ $$| $$  | $$ /$$| $$      | $$  | $$| $$| $$  | $$       /$$__  $$| $$  | $$| $$  | $$| $$      | $$_____/ \____  $$\____  $$
+#  | $$$$$$$/| $$  |  $$$$/|  $$$$$$$|  $$$$$$/| $$| $$  | $$      |  $$$$$$$|  $$$$$$$|  $$$$$$$| $$      |  $$$$$$$ /$$$$$$$//$$$$$$$/
+#  |_______/ |__/   \___/   \_______/ \______/ |__/|__/  |__/       \_______/ \_______/ \_______/|__/       \_______/|_______/|_______/ 
+#                                                                                                                                       
+#                                                                                                                                       
+#                                                                                                                                       
+    def to_bytes(self, n, length, endianess='big'):
+        h = '%x' % n
+        s = ('0'*(len(h) % 2) + h).zfill(length*2).decode('hex')
+        return s if endianess == 'big' else s[::-1]
+
+    def check_bc(self, bc):
+        digits58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+        n = 0
+        for char in bc:
+            n = n * 58 + digits58.index(char)
+        bcbytes = self.to_bytes(n, 25, 'big')
+
+        return bcbytes[-4:] == sha256(sha256(bcbytes[:-4]).digest()).digest()[:4]
 

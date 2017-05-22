@@ -85,7 +85,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         return "Email Hit Reports"
 
     def getRelativeFilePath(self):
-        return "FEA-Email_Validation_Report.csv"
+        return Case.getCurrentCase().getName() + "_FEA.csv"
 
 
     # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
@@ -157,10 +157,10 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         # Create Excel Workbook
         if generateXLS:
-            fileNameExcel = os.path.join(baseReportDir, "teste.xls")
+            fileNameExcel = os.path.join(baseReportDir, Case.getCurrentCase().getName() + "_FEA.xls")
             book = xlwt.Workbook(encoding="utf-8")
             sheetDomains = book.add_sheet("Interesting domains")
-            sheetFalsePositives = book.add_sheet("False Positives")
+            sheetFalsePositives = book.add_sheet("Detail")
             styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
             sheetFalsePositives.write(0,0,"Email", styleRowHeaders)
             sheetFalsePositives.write(0,1,"Alphanumeric check", styleRowHeaders)
