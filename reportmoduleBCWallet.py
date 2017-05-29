@@ -30,6 +30,8 @@
 import os
 import inspect
 import urllib2
+import json
+import datetime
 #import dns.resolver
 
 from javax.swing import JCheckBox
@@ -123,13 +125,15 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
                 bcAddress = attributeItem.getDisplayString()
                 self.log(Level.INFO, "[JM] Bitcoin Address: " + bcAddress)
-                valid = "(valid)"
+
                 if not self.check_bc(bcAddress):
-                    valid = "(not valid)"
                     self.log(Level.INFO, "[JM] Bitcoin address is not valid")
+                    #report.write("%s - not valid;\n" % bcAddress)
                 else:
                     self.log(Level.INFO, "[JM] Bitcoin address is valid")
-                report.write("%s %s;\n" % (bcAddress, valid))
+                    balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
+                    report.write("%s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, timeFirstSeen, balance, received))
+                
             artifactCount += 1
             progressBar.increment()
 
@@ -214,3 +218,25 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
 
         return bcbytes[-4:] == sha256(sha256(bcbytes[:-4]).digest()).digest()[:4]
 
+    def checkBlockchain(self, walletAddress):
+        
+        # url for Blockchain API - simple queries
+        urlBlockchain = 'https://blockchain.info'
+        # minimum number of confirmations to consider info valid
+        numConfirmations = 6
+
+        #self.log(Level.INFO, "Blockchain query: " + urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
+        response = urllib2.urlopen(urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
+        balance = json.load(response) / 100000000
+
+        response = urllib2.urlopen(urlBlockchain + "/q/getreceivedbyaddress/" + walletAddress + "?confirmations=" + str(numConfirmations))
+        received = json.load(response) / 100000000
+
+        response = urllib2.urlopen(urlBlockchain + "/q/addressfirstseen/" + walletAddress)
+        timeFirstSeen = json.load(response)
+        if (timeFirstSeen != 0):
+            reg = datetime.datetime.fromtimestamp(int(timeFirstSeen)).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            reg = "n.a."
+
+        return str(balance), str(received), reg
