@@ -125,15 +125,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         doNSLookup = self.configPanel.getDoNSLookup()
         doWBLookup = self.configPanel.getDoWBLookup()
 
-        if generateXLS:
-            self.log(Level.INFO, "[JM] Generate Excel Report selected")
-        if generateCSV:
-            self.log(Level.INFO, "[JM] Generate CSV Report selected")
-        if doNSLookup:
-            self.log(Level.INFO, "[JM] Perform DNS Lookup selected")
-        if doWBLookup:
-            self.log(Level.INFO, "[JM] Perform Wayback Machine Lookup selected")
-
         # miscellaneous initializations
         reportDB = self.EmailReport()
         count = 0

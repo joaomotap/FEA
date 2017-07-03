@@ -23,9 +23,9 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 
-# Credit card analysis report module for Autopsy.
+# Bitcoin/blockchain addresses analysis report module for Autopsy.
 #
-# See http://sleuthkit.org/autopsy/docs/api-docs/3.1/index.html for documentation
+# by João Mota
 
 import os
 import inspect
