@@ -141,9 +141,13 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
                 ccNumber = attributeItem.getDisplayString()
                 self.log(Level.INFO, "[JM] Credit card number: " + ccNumber)
                 #self.log(Level.INFO, "[JM] Parent artifact: " + str(artifactItem.getParentArtifact()))
-                self.log(Level.INFO, "[JM] Sources:")
-                for source in attributeItem.getSources():
-                    self.log("» " + source)
+                listOfSources = attributeItem.getSources()
+                self.log(Level.INFO, "[JM] Sources [" + str(len(listOfSources)) + "]:")
+                if len(listOfSources) > 0:
+                    for attributeSource in listOfSources:
+                        self.log(Level.INFO, "» %s" % attributeSource)
+                else:
+                    self.log(Level.INFO, "» None found!")
                 valid = True
                 if self.is_luhn_valid(ccNumber):
                     self.log(Level.INFO, "[JM] CC is valid")

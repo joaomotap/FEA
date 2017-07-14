@@ -158,8 +158,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             sheetFalsePositives.write(0,2,"TLD", styleRowHeaders)
             sheetFalsePositives.write(0,3,"TLD check", styleRowHeaders)
             sheetFalsePositives.write(0,4,"Domain", styleRowHeaders)
-            sheetFalsePositives.write(0,5,"Domain check", styleRowHeaders)
-            sheetFalsePositives.write(0,6,"Internet archive check", styleRowHeaders)
+            sheetFalsePositives.write(0,5,"Domain Checked?", styleRowHeaders)
+            sheetFalsePositives.write(0,6,"Domain check", styleRowHeaders)
+            sheetFalsePositives.write(0,7,"Internet archive check", styleRowHeaders)
             sheetDomains.write(0,0,"Domain name", styleRowHeaders)
             sheetDomains.write(0,1,"Hits", styleRowHeaders)
 
@@ -170,7 +171,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             report = open(fileName, 'w')
 
             # write csv header row
-            report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain check;internet archive check\n")
+            report.write("artifact email;Alphanumeric check;TLD;TLD check;domain;domain checked?;domain check;internet archive check\n")
 
 
         #    /$$$$$$              /$$            /$$$$$$              /$$     /$$  /$$$$$$                      /$$             
@@ -295,7 +296,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 report.write("\n")
             if generateXLS:
                 items = row.split(";")
-                for n in range(7):
+                # TODO: remove hardcoded range size to allow for future error-free updates to report columns
+                for n in range(8):
                     sheetFalsePositives.write(baseCell,n,items[n])
             baseCell += 1
 
@@ -370,7 +372,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
         def addEmailRecord(self, id, email, tldCheck=None, domainCheck=None):
             self.recordCount += 1
-            newRecord = self.EmailRecord(email.lower(), tldCheck, domainCheck)
+            newRecord = self.EmailRecord(email.lower(), tldCheck, domainCheck, False)
             self.recordList[id] = newRecord
 
         def getRecordById(self, id):
@@ -431,14 +433,16 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
 
         class EmailRecord(object):
-            def __init__(self, email, tldCheck, domainCheck):
+            def __init__(self, email, tldCheck, domainCheck, domainChecked):
                 self.email = email
                 self.tldCheck = tldCheck
                 self.domainCheck = domainCheck
                 self.wb = "n.a.;"
+                self.domainChecked = domainChecked
 
             def setDomainCheck(self, domainCheck):
                 self.domainCheck = domainCheck
+                self.domainChecked = True
 
             def getDomain(self):
                 domain = self.email.split("@")
@@ -470,17 +474,20 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                         #return (archive_timestamp, archive_url)
                         self.wb = archive_timestamp + ";" + archive_url
                     else:
-                        self.wb = "No record."
+                        self.wb = "NoRecord"
 
             def getEmailReportRow(self):
-                alphaCheck = "Ok"
-                tldRes = "Failed"
-                domainRes = "n.a."
+                alphaCheck = "1"
+                tldRes = "0"
+                domainRes = "0"
+                domainCheckedStatus = "0"
                 if not self.getAlphaCheck():
-                    alphaCheck = "Failed"
+                    alphaCheck = "0"
                 if self.tldCheck:
-                    tldRes = "Ok"
+                    tldRes = "1"
                 if self.domainCheck:
-                    domainRes = "Ok"
-                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainRes + ";" + self.wb
+                    domainRes = "1"
+                if self.domainChecked:
+                    domainCheckedStatus = "1"
+                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainCheckedStatus + ";" + domainRes + ";" + self.wb
 
