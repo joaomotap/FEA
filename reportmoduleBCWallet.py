@@ -23,15 +23,24 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 
-# Credit card analysis report module for Autopsy.
+# Bitcoin/blockchain addresses analysis report module for Autopsy.
 #
-# See http://sleuthkit.org/autopsy/docs/api-docs/3.1/index.html for documentation
+# by João Mota
 
 import os
 import inspect
 import urllib2
 import json
 import datetime
+import xlwt
+import ecdsa
+import ecdsa.der
+import ecdsa.util
+import hashlib
+import binascii
+import re
+import struct
+#import pybtcengine
 #import dns.resolver
 
 from javax.swing import JCheckBox
@@ -95,6 +104,23 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         self.log(Level.INFO, "* [JM] Scraping artifacts from blackboard starting  *")
         self.log(Level.INFO, "*****************************************************")
 
+        # configure excel report
+        fileNameExcel = os.path.join(baseReportDir, Case.getCurrentCase().getName() + "_BC_FEA.xls")
+        book = xlwt.Workbook(encoding="utf-8")
+        sheetPublicAddresses = book.add_sheet("FEA_BC_Public_wallets")
+        sheetPrivateAddresses = book.add_sheet("FEA_BC_Private_wallets")
+        styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
+        sheetPublicAddresses.write(0,0,"Address", styleRowHeaders)
+        sheetPublicAddresses.write(0,1,"Time 1st seen", styleRowHeaders)
+        sheetPublicAddresses.write(0,2,"Balance", styleRowHeaders)
+        sheetPublicAddresses.write(0,3,"Total Received", styleRowHeaders)
+        sheetPublicAddresses.write(0,4,"Blockchain.info", styleRowHeaders)
+        sheetPrivateAddresses.write(0,0,"Private Key", styleRowHeaders)
+        sheetPrivateAddresses.write(0,1,"Wallet Address", styleRowHeaders)
+        sheetPrivateAddresses.write(0,2,"Balance", styleRowHeaders)
+        sheetPrivateAddresses.write(0,3,"Time 1st seen", styleRowHeaders)
+        sheetPrivateAddresses.write(0,4,"Total received", styleRowHeaders)
+
         # configure progress bar
         progressBar.setIndeterminate(False)
         progressBar.start()
@@ -107,7 +133,9 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
 
         progressBar.setMaximumProgress(progressTotal + 1)
 
+        #inits
         artifactCount = 0
+        recordDB = self.BlockchainReport()
 
         # Get Blackboard artifacts
         # Emails:
@@ -131,15 +159,50 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
                     #report.write("%s - not valid;\n" % bcAddress)
                 else:
                     self.log(Level.INFO, "[JM] Bitcoin address is valid")
-                    balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
-                    report.write("%s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, timeFirstSeen, balance, received))
-                
+                    if len(bcAddress) < 51:
+                        balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
+                        recordDB.addBlockchainRecord(bcAddress, 0, timeFirstSeen, balance, received)
+                        report.write("Wallet address: %s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, timeFirstSeen, balance, received))
+                    else:
+                        self.log(Level.INFO, "[JM] Possible private key: " + bcAddress)
+                        candidatePublicAddress = self.getAddressFromPrivateKey(bcAddress)
+                        self.log(Level.INFO, "[JM] possible wallet address found: " + candidatePublicAddress)
+                        if self.check_bc(candidatePublicAddress):
+                            balance, received, timeFirstSeen = self.checkBlockchain(candidatePublicAddress)
+                            recordDB.addPrivateWallet(candidatePublicAddress, timeFirstSeen, balance, received, bcAddress)
+                            report.write("*** PRIVATE KEY FOUND: %s with wallet address: %s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, candidatePublicAddress, timeFirstSeen, balance, received))
+                            #self.log(Level.INFO, "[JM] Matching wallet! balance: " + balance + "; time1stSeen: " + timeFirstSeen)
+
             artifactCount += 1
             progressBar.increment()
 
         report.write("Artifacts processed = %d" % artifactCount)
         report.close()
-        
+
+        # write excel report
+        baseCellPublic = 1
+        baseCellPrivate = 1
+        for row in recordDB.getAllRecords():
+            # write public wallet addresses in subsheet
+            if row.getAddressType() == 0:
+                sheetPublicAddresses.write(baseCellPublic, 0, row.getAddress())
+                sheetPublicAddresses.write(baseCellPublic, 1, row.getTimeFirstSeen())
+                sheetPublicAddresses.write(baseCellPublic, 2, row.getAccountBalance())
+                sheetPublicAddresses.write(baseCellPublic, 3, row.getTotalReceived())
+                sheetPublicAddresses.write(baseCellPublic, 4, "https://blockchain.info/address/" + row.getAddress())
+                baseCellPublic += 1
+
+        for row in recordDB.getAllPrivateKeyRecords():
+            # write private key addresses in subsheet
+            sheetPrivateAddresses.write(baseCellPrivate, 0, row.getPrivateKey())
+            sheetPrivateAddresses.write(baseCellPrivate, 1, row.getAddress())
+            sheetPrivateAddresses.write(baseCellPrivate, 2, row.getAccountBalance())
+            sheetPrivateAddresses.write(baseCellPrivate, 3, row.getTimeFirstSeen())
+            sheetPrivateAddresses.write(baseCellPrivate, 4, row.getTotalReceived())
+            baseCellPrivate += 1
+
+        book.save(fileNameExcel)
+        Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA Blockchain address analysis report (eXcel)")
 
         # Add the report to the Case, so it is shown in the tree
         Case.getCurrentCase().addReport(fileName, self.moduleName, "Artifact Keyword Count Report");
@@ -169,7 +232,7 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
     # * Function: implement config settings GUI *
     # *******************************************
     def getConfigurationPanel(self):
-        # TODO: implementar l�gica no painel e tratar eventos
+        # TODO: implementar lógica no painel e tratar eventos
         panel0 = JPanel(GridBagLayout())
 
         gbc = GridBagConstraints()
@@ -202,7 +265,10 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
 #  |_______/ |__/   \___/   \_______/ \______/ |__/|__/  |__/       \_______/ \_______/ \_______/|__/       \_______/|_______/|_______/ 
 #                                                                                                                                       
 #                                                                                                                                       
-#                                                                                                                                       
+#             
+
+    # TODO: consider "deep" validation: https://bitcointalk.org/index.php?topic=1026.0
+
     def to_bytes(self, n, length, endianess='big'):
         h = '%x' % n
         s = ('0'*(len(h) % 2) + h).zfill(length*2).decode('hex')
@@ -225,6 +291,7 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         # minimum number of confirmations to consider info valid
         numConfirmations = 6
 
+        # TODO: check for exceptions!
         #self.log(Level.INFO, "Blockchain query: " + urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
         response = urllib2.urlopen(urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
         balance = json.load(response) / 100000000
@@ -240,3 +307,91 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
             reg = "n.a."
 
         return str(balance), str(received), reg
+
+    def getAddressFromPrivateKey(self, wifpriv):
+
+        t='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+        pk = sum([t.index(wifpriv[::-1][l])*(58**l) for l in range(len(wifpriv))])/(2**32)%(2**256)
+
+        secp256k1curve=ecdsa.ellipticcurve.CurveFp(115792089237316195423570985008687907853269984665640564039457584007908834671663,0,7)
+        secp256k1point=ecdsa.ellipticcurve.Point(secp256k1curve,0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
+        secp256k1=ecdsa.curves.Curve('secp256k1',secp256k1curve,secp256k1point,(1,3,132,0,10))
+
+        pko=ecdsa.SigningKey.from_secret_exponent(pk,secp256k1)
+        pubkey=binascii.hexlify(pko.get_verifying_key().to_string())
+        pubkey2=hashlib.sha256(binascii.unhexlify('04'+pubkey)).hexdigest()
+        pubkey3=hashlib.new('ripemd160',binascii.unhexlify(pubkey2)).hexdigest()
+        pubkey4=hashlib.sha256(binascii.unhexlify('00'+pubkey3)).hexdigest()
+        pubkey5=hashlib.sha256(binascii.unhexlify(pubkey4)).hexdigest()
+        pubkey6=pubkey3+pubkey5[:8]
+        pubnum=int(pubkey6,16)
+        pubnumlist=[]
+        while pubnum!=0: pubnumlist.append(pubnum%58); pubnum/=58
+        address=''
+        for l in ['123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'[x] for x in pubnumlist]:
+            address=l+address
+        return '1'+address
+
+
+#   /$$$$$$$                                            /$$                     /$$                                                 
+#  | $$__  $$                                          | $$                    | $$                                                 
+#  | $$  \ $$  /$$$$$$   /$$$$$$   /$$$$$$   /$$$$$$  /$$$$$$          /$$$$$$$| $$  /$$$$$$   /$$$$$$$ /$$$$$$$  /$$$$$$   /$$$$$$$
+#  | $$$$$$$/ /$$__  $$ /$$__  $$ /$$__  $$ /$$__  $$|_  $$_/         /$$_____/| $$ |____  $$ /$$_____//$$_____/ /$$__  $$ /$$_____/
+#  | $$__  $$| $$$$$$$$| $$  \ $$| $$  \ $$| $$  \__/  | $$          | $$      | $$  /$$$$$$$|  $$$$$$|  $$$$$$ | $$$$$$$$|  $$$$$$ 
+#  | $$  \ $$| $$_____/| $$  | $$| $$  | $$| $$        | $$ /$$      | $$      | $$ /$$__  $$ \____  $$\____  $$| $$_____/ \____  $$
+#  | $$  | $$|  $$$$$$$| $$$$$$$/|  $$$$$$/| $$        |  $$$$/      |  $$$$$$$| $$|  $$$$$$$ /$$$$$$$//$$$$$$$/|  $$$$$$$ /$$$$$$$/
+#  |__/  |__/ \_______/| $$____/  \______/ |__/         \___/         \_______/|__/ \_______/|_______/|_______/  \_______/|_______/ 
+#                      | $$                                                                                                         
+#                      | $$                                                                                                         
+#                      |__/                                                                                                         
+
+
+    class BlockchainReport(object):
+        def __init__(self):
+            self.recordList = {}
+            self.recordCount = 0
+            self.privateKeysList = {}
+            self.privateKeysCount = 0
+
+        def addBlockchainRecord(self, walletAddress, walletType, timeFirstSeen, totalBalance, totalReceived):
+            self.recordCount += 1
+            newRecord = self.BlockchainRecord(walletAddress, walletType, timeFirstSeen, totalBalance, totalReceived)
+            self.recordList[walletAddress] = newRecord
+
+        def addPrivateWallet(self, walletAddress, timeFirstSeen, totalBalance, totalReceived, privateKey):
+            self.privateKeysCount += 1
+            newRecord = self.BlockchainRecord(walletAddress, 1, timeFirstSeen, totalBalance, totalReceived, privateKey)
+            self.privateKeysList[privateKey] = newRecord
+        
+        def getAllRecords(self):
+            return self.recordList.values()
+
+        def getAllPrivateKeyRecords(self):
+            return self.privateKeysList.values()
+
+        class BlockchainRecord(object):
+            def __init__(self, walletAddress, walletType, timeFirstSeen, totalBalance, totalReceived, privateKey=None):
+                self.walletAddress = walletAddress
+                self.walletType = walletType
+                self.timeFirstSeen = timeFirstSeen
+                self.totalBalance = totalBalance
+                self.totalReceived = totalReceived
+                self.privateKey = privateKey
+
+            def getPrivateKey(self):
+                return self.privateKey
+
+            def getAddressType(self):
+                return self.walletType
+
+            def getAddress(self):
+                return self.walletAddress
+
+            def getTimeFirstSeen(self):
+                return self.timeFirstSeen
+
+            def getAccountBalance(self):
+                return self.totalBalance
+
+            def getTotalReceived(self):
+                return self.totalReceived
