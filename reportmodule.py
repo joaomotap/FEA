@@ -126,23 +126,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         doWBLookup = self.configPanel.getDoWBLookup()
 
         # miscellaneous initializations
+        progressBar.updateStatusLabel("Retrieving udpated list of valid TLDs from iana.org")
         reportDB = self.EmailReport()
-        count = 0
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         emailArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "Email Addresses")
         progressTotal = len(emailArtifacts)     # TODO: this might be too large of a number and cause the process to freeze
 
         progressBar.setMaximumProgress(progressTotal * 2 + 2)
 
-        # read valid TLD list from IANA
-        progressBar.updateStatusLabel("Retrieving udpated list of valid TLDs from iana.org")
-        try:
-            req = urllib2.Request("https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
-            response = urllib2.urlopen(req)
-            tldListHTML = response.read()
-        except urllib2.HTTPError as e:
-            self.log(Level.INFO, "[JM] error reading TLD list from https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
-        tldList = tldListHTML.splitlines()
         progressBar.increment()
 
 
@@ -152,6 +143,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             book = xlwt.Workbook(encoding="utf-8")
             sheetDomains = book.add_sheet("Interesting domains")
             sheetFalsePositives = book.add_sheet("Detail")
+            sheetTruePositives = book.add_sheet("Valid Emails")
             styleRowHeaders = xlwt.easyxf('font: name Arial, color-index blue, bold on', num_format_str='#,##0.00')
             sheetFalsePositives.write(0,0,"Email", styleRowHeaders)
             sheetFalsePositives.write(0,1,"Alphanumeric check", styleRowHeaders)
@@ -163,6 +155,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             sheetFalsePositives.write(0,7,"Internet archive check", styleRowHeaders)
             sheetDomains.write(0,0,"Domain name", styleRowHeaders)
             sheetDomains.write(0,1,"Hits", styleRowHeaders)
+            sheetTruePositives.write(0,0,"Email", styleRowHeaders)
+            sheetTruePositives.write(0,1,"Source", styleRowHeaders)
 
 
         # Open report file for writing
@@ -199,15 +193,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         for artifactItem in emailArtifacts:
 
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
-                count += 1
-                tldFlag = False
-
-                email = attributeItem.getDisplayString().split(".")
-
-                if email[-1].upper() in tldList:
-                    tldFlag = True
-
-                reportDB.addEmailRecord(count, attributeItem.getDisplayString(), tldCheck=tldFlag)
+                reportDB.addNewEmailRecord(attributeItem.getDisplayString())
 
             progressBar.increment()
 
@@ -308,6 +294,12 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 sheetDomains.write(baseCell, 1, reportDB.getHitsForDomain(rec))
                 baseCell += 1
 
+            baseCell = 1
+            for rec in reportDB.getListOfValidEmailAddresses():
+                sheetTruePositives.write(baseCell,0,rec)
+                # TODO write SOURCE of valid email address!
+                baseCell += 1
+
             book.save(fileNameExcel)
             Case.getCurrentCase().addReport(fileNameExcel, self.moduleName, "FEA - Email Validation Report (eXcel)")
 
@@ -366,14 +358,29 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
     class EmailReport(object):
 
+        IANA_ADDR = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
+
         def __init__(self):
             self.recordList = {}
             self.recordCount = 0
+            # read valid TLD list from IANA
+            try:
+                req = urllib2.Request(self.IANA_ADDR)
+                response = urllib2.urlopen(req)
+                tldListHTML = response.read()
+            except urllib2.HTTPError as e:
+                raise ValueError("error accessing TLD list from " + self.IANA_ADDR)
+            self.tldList = tldListHTML.splitlines()
 
-        def addEmailRecord(self, id, email, tldCheck=None, domainCheck=None):
+        def addEmailRecord(self, newEmailRecord):
             self.recordCount += 1
+            self.recordList[recordCount] = newEmailRecord
+        def addNewEmailRecord(self, email, tldCheck=None, domainCheck=None):
             newRecord = self.EmailRecord(email.lower(), tldCheck, domainCheck, False)
-            self.recordList[id] = newRecord
+            newRecord.checkTLD(self.tldList)
+            newRecord.checkAlpha()
+            self.recordList[self.recordCount] = newRecord
+            self.recordCount += 1
 
         def getRecordById(self, id):
             return self.recordList.get(id, default=None)
@@ -399,6 +406,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                     if rec.getTLDCheck() and rec.domainCheck:
                         domainNamesList.append(rec.getDomain())
             return domainNamesList
+
+        def getListOfValidEmailAddresses(self):
+            validEmailsList = []
+            for rec in self.recordList.values():
+                if not(rec.getEmail() in validEmailsList):
+                    if rec.getTLDCheck() and rec.getAlphaCheck():
+                        validEmailsList.append(rec.getEmail())
+            return validEmailsList
 
         def getHitsForDomain(self, domain):
             count = 0
@@ -448,6 +463,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 domain = self.email.split("@")
                 return domain[-1].lower()
 
+            def getEmail(self):
+                return self.email
+
             def getTLD(self):
                 return self.email.split(".")[-1]
 
@@ -456,6 +474,15 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             def getAlphaCheck(self):
                 return not re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', self.email.lower()) == None
+
+            def checkAlpha(self):
+                self.alphaCheck = self.getAlphaCheck()
+
+            def checkTLD(self, tldList):
+                self.tldCheck = False
+                tld = self.email.split(".")
+                if tld[-1].upper() in tldList:
+                    self.tldCheck = True
 
             def checkWayback(self):
                 
@@ -477,17 +504,17 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                         self.wb = "NoRecord"
 
             def getEmailReportRow(self):
-                alphaCheck = "1"
+                alphaCheckRes = "0"
                 tldRes = "0"
                 domainRes = "0"
                 domainCheckedStatus = "0"
-                if not self.getAlphaCheck():
-                    alphaCheck = "0"
+                if self.alphaCheck:
+                    alphaCheckRes = "1"
                 if self.tldCheck:
                     tldRes = "1"
                 if self.domainCheck:
                     domainRes = "1"
                 if self.domainChecked:
                     domainCheckedStatus = "1"
-                return self.email + ";" + alphaCheck + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainCheckedStatus + ";" + domainRes + ";" + self.wb
+                return self.email + ";" + alphaCheckRes + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainCheckedStatus + ";" + domainRes + ";" + self.wb
 
