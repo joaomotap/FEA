@@ -140,14 +140,14 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_CARD_NUMBER):
                 ccNumber = attributeItem.getDisplayString()
                 self.log(Level.INFO, "[JM] Credit card number: " + ccNumber)
-                #self.log(Level.INFO, "[JM] Parent artifact: " + str(artifactItem.getParentArtifact()))
-                listOfSources = attributeItem.getSources()
-                self.log(Level.INFO, "[JM] Sources [" + str(len(listOfSources)) + "]:")
-                if len(listOfSources) > 0:
-                    for attributeSource in listOfSources:
-                        self.log(Level.INFO, "» %s" % attributeSource)
-                else:
-                    self.log(Level.INFO, "» None found!")
+                sourceFiles = sleuthkitCase.findAllFilesWhere("obj_id = " + str(attributeItem.getParentArtifact().getObjectID()))
+                sourceFile = ""
+                for file in sourceFiles:
+                    if sourceFile == "":
+                        sourceFile = file.getName()
+                    else:
+                        sourceFile = sourceFile + " & " + file.getName()
+
                 valid = True
                 if self.is_luhn_valid(ccNumber):
                     self.log(Level.INFO, "[JM] CC is valid")
@@ -161,6 +161,7 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
                         sheetFalsePositives.write(baseCell,1, "Valid")
                     else:
                         sheetFalsePositives.write(baseCell,1, "Not Valid")
+                    sheetFalsePositives.write(baseCell,2,sourceFile)
                 if generateCSV:
                     if valid:
                         report.write("%s;Valid\n" % ccNumber)

@@ -193,7 +193,14 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         for artifactItem in emailArtifacts:
 
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
-                reportDB.addNewEmailRecord(attributeItem.getDisplayString())
+                sourceFiles = sleuthkitCase.findAllFilesWhere("obj_id = " + str(attributeItem.getParentArtifact().getObjectID()))
+                sourceFile = ""
+                for file in sourceFiles:
+                    if sourceFile == "":
+                        sourceFile = file.getName()
+                    else:
+                        sourceFile = sourceFile + " & " + file.getName()
+                reportDB.addNewEmailRecord(attributeItem.getDisplayString(), sourceFile)
 
             progressBar.increment()
 
@@ -295,9 +302,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 baseCell += 1
 
             baseCell = 1
-            for rec in reportDB.getListOfValidEmailAddresses():
-                sheetTruePositives.write(baseCell,0,rec)
-                # TODO write SOURCE of valid email address!
+            for emailAddr, sourceFile in reportDB.getListOfValidEmailAddresses():
+                sheetTruePositives.write(baseCell,0,emailAddr)
+                sheetTruePositives.write(baseCell,1,sourceFile)
                 baseCell += 1
 
             book.save(fileNameExcel)
@@ -375,8 +382,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         def addEmailRecord(self, newEmailRecord):
             self.recordCount += 1
             self.recordList[recordCount] = newEmailRecord
-        def addNewEmailRecord(self, email, tldCheck=None, domainCheck=None):
-            newRecord = self.EmailRecord(email.lower(), tldCheck, domainCheck, False)
+        def addNewEmailRecord(self, email, sourceFile):
+            newRecord = self.EmailRecord(email.lower(), sourceFile, False, False, False)
             newRecord.checkTLD(self.tldList)
             newRecord.checkAlpha()
             self.recordList[self.recordCount] = newRecord
@@ -410,9 +417,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         def getListOfValidEmailAddresses(self):
             validEmailsList = []
             for rec in self.recordList.values():
-                if not(rec.getEmail() in validEmailsList):
+                if not((rec.getEmail(),rec.getSourceFile()) in validEmailsList):
                     if rec.getTLDCheck() and rec.getAlphaCheck():
-                        validEmailsList.append(rec.getEmail())
+                        validEmailsList.append((rec.getEmail(), rec.getSourceFile()))
             return validEmailsList
 
         def getHitsForDomain(self, domain):
@@ -448,8 +455,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
 
         class EmailRecord(object):
-            def __init__(self, email, tldCheck, domainCheck, domainChecked):
+            def __init__(self, email, sourceFile, tldCheck, domainCheck, domainChecked):
                 self.email = email
+                self.sourceFile = sourceFile
                 self.tldCheck = tldCheck
                 self.domainCheck = domainCheck
                 self.wb = "n.a.;"
@@ -465,6 +473,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             def getEmail(self):
                 return self.email
+
+            def getSourceFile(self):
+                return self.sourceFile
 
             def getTLD(self):
                 return self.email.split(".")[-1]
