@@ -40,14 +40,14 @@ import hashlib
 import binascii
 import re
 import struct
-#import pybtcengine
-#import dns.resolver
+import time
 
+from javax.swing import JPanel
 from javax.swing import JCheckBox
 from javax.swing import JButton
+from javax.swing import JSlider
 from javax.swing import ButtonGroup
 from javax.swing import JComboBox
-#from javax.swing import JRadioButton
 from javax.swing import JList
 from javax.swing import JTextArea
 from javax.swing import JTextField
@@ -55,7 +55,6 @@ from javax.swing import JLabel
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
-from javax.swing import JPanel
 from javax.swing import JScrollPane
 from javax.swing import JFileChooser
 from javax.swing.filechooser import FileNameExtensionFilter
@@ -71,6 +70,7 @@ from org.sleuthkit.autopsy.report.ReportProgressPanel import ReportStatus
 from org.sleuthkit.autopsy.casemodule.services import FileManager
 from org.sleuthkit.datamodel import BlackboardArtifact
 from org.sleuthkit.datamodel import BlackboardAttribute
+from org.sleuthkit.autopsy.coreutils import ModuleSettings
 
 from hashlib import sha256
 
@@ -90,22 +90,23 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         return self.moduleName
 
     def getDescription(self):
-        return "BC Wallet Hit Reports"
+        return "Bitcoin Wallet Reports - Generates reports regarding the presence of Bitcoin wallets or private keys in the ingested artifacts (please note this requires appropriate regexes to be setup in their own keyword search list as specified in the documentation)"
 
     def getRelativeFilePath(self):
-        return "FEA-BC-JM.txt"
+        return "FEA-BitCoin.txt"
 
     # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
     # The 'progressBar' object is of type ReportProgressPanel.
     #   See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1report_1_1_report_progress_panel.html
     def generateReport(self, baseReportDir, progressBar):
 
-        self.log(Level.INFO, "*****************************************************")
-        self.log(Level.INFO, "* [JM] Scraping artifacts from blackboard starting  *")
-        self.log(Level.INFO, "*****************************************************")
+        # retrieve configuration settings
+        blockchainCheck = self.configPanel.getBlockchainCheck()
+        configList = self.configPanel.getHitlist()
+        timeoutBlockchain = self.configPanel.getMaxTimeout()
 
         # configure excel report
-        fileNameExcel = os.path.join(baseReportDir, Case.getCurrentCase().getName() + "_BC_FEA.xls")
+        fileNameExcel = os.path.join(baseReportDir, Case.getCurrentCase().getName() + "_BitCoin_FEA.xls")
         book = xlwt.Workbook(encoding="utf-8")
         sheetPublicAddresses = book.add_sheet("FEA_BC_Public_wallets")
         sheetPrivateAddresses = book.add_sheet("FEA_BC_Private_wallets")
@@ -124,25 +125,19 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         # configure progress bar
         progressBar.setIndeterminate(False)
         progressBar.start()
+        progressBar.updateStatusLabel("Initializing")
 
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
 
-        # TODO: the name of the hash list should be retrieved from the GUI settings dialog
-        bcArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, "testlist")
+        bcArtifacts = sleuthkitCase.getBlackboardArtifacts(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME, configList)
         progressTotal = len(bcArtifacts)
 
         progressBar.setMaximumProgress(progressTotal + 1)
 
-        #inits
+        #misc inits
         artifactCount = 0
         recordDB = self.BlockchainReport()
-
-        # Get Blackboard artifacts
-        # Emails:
-        # display name: E-Mail Messages; ID: 13; type name: TSK_EMAIL_MSG
-        # display name: Accounts; ID: 21; type name: TSK_SERVICE_ACCOUNT
-        # display name: Accounts; ID: 39; type name: TSK_ACCOUNT
-        # atributo para sets de keywords: TSK_SET_NAME
+        skipFirstTimeout = True
 
         # Write the results to the report file.
         fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
@@ -154,15 +149,27 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
                 bcAddress = attributeItem.getDisplayString()
                 self.log(Level.INFO, "[JM] Bitcoin Address: " + bcAddress)
 
+                if skipFirstTimeout:
+                    skipFirstTimeout = False
+                else:
+                    progressBar.updateStatusLabel("Waiting for %s secs before checking address %s with the Blockchain API" % (timeoutBlockchain, bcAddress))
+                    time.sleep(timeoutBlockchain)
+                
+                progressBar.updateStatusLabel("Analyzing bitcoin Address: " + bcAddress)
+
                 if not self.check_bc(bcAddress):
                     self.log(Level.INFO, "[JM] Bitcoin address is not valid")
                     #report.write("%s - not valid;\n" % bcAddress)
                 else:
                     self.log(Level.INFO, "[JM] Bitcoin address is valid")
                     if len(bcAddress) < 51:
-                        balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
-                        recordDB.addBlockchainRecord(bcAddress, 0, timeFirstSeen, balance, received)
-                        report.write("Wallet address: %s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, timeFirstSeen, balance, received))
+                        if blockchainCheck:
+                            balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
+                            recordDB.addBlockchainRecord(bcAddress, 0, timeFirstSeen, balance, received)
+                            report.write("Wallet address: %s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, timeFirstSeen, balance, received))
+                        else:
+                            recordDB.addBlockchainRecord(bcAddress, 0, 0, 0, 0)
+                            report.write("Wallet address: %s (user opted out of Blockchain check)\n" % bcAddress)
                     else:
                         self.log(Level.INFO, "[JM] Possible private key: " + bcAddress)
                         candidatePublicAddress = self.getAddressFromPrivateKey(bcAddress)
@@ -171,7 +178,6 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
                             balance, received, timeFirstSeen = self.checkBlockchain(candidatePublicAddress)
                             recordDB.addPrivateWallet(candidatePublicAddress, timeFirstSeen, balance, received, bcAddress)
                             report.write("*** PRIVATE KEY FOUND: %s with wallet address: %s - first seen on: %s - account balance:  %s BTC - total received: %s BTC;\n" % (bcAddress, candidatePublicAddress, timeFirstSeen, balance, received))
-                            #self.log(Level.INFO, "[JM] Matching wallet! balance: " + balance + "; time1stSeen: " + timeFirstSeen)
 
             artifactCount += 1
             progressBar.increment()
@@ -186,10 +192,15 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
             # write public wallet addresses in subsheet
             if row.getAddressType() == 0:
                 sheetPublicAddresses.write(baseCellPublic, 0, row.getAddress())
-                sheetPublicAddresses.write(baseCellPublic, 1, row.getTimeFirstSeen())
-                sheetPublicAddresses.write(baseCellPublic, 2, row.getAccountBalance())
-                sheetPublicAddresses.write(baseCellPublic, 3, row.getTotalReceived())
-                sheetPublicAddresses.write(baseCellPublic, 4, "https://blockchain.info/address/" + row.getAddress())
+                if blockchainCheck:
+                    sheetPublicAddresses.write(baseCellPublic, 1, row.getTimeFirstSeen())
+                    sheetPublicAddresses.write(baseCellPublic, 2, row.getAccountBalance())
+                    sheetPublicAddresses.write(baseCellPublic, 3, row.getTotalReceived())
+                    sheetPublicAddresses.write(baseCellPublic, 4, "https://blockchain.info/address/" + row.getAddress())
+                else:
+                    for n in range(1, 4):
+                        sheetPublicAddresses.write(baseCellPublic, n, "n.a")
+                    sheetPublicAddresses.write(baseCellPublic, 4, "user opted out of blockchain.info check")
                 baseCellPublic += 1
 
         for row in recordDB.getAllPrivateKeyRecords():
@@ -232,26 +243,9 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
     # * Function: implement config settings GUI *
     # *******************************************
     def getConfigurationPanel(self):
-        # TODO: implementar lógica no painel e tratar eventos
-        panel0 = JPanel(GridBagLayout())
 
-        gbc = GridBagConstraints()
-        gbc.anchor = GridBagConstraints.NORTH
-        gbc.gridx = 0
-        gbc.gridy = 0
-
-
-        cbNSLookup = JCheckBox("Find bitcoin addresses")
-        panel0.add(cbNSLookup, gbc)
-
-        gbc.gridy = 1
-        cbHitlist = JTextField("Base list of hashes to analyze")
-        panel0.add(cbHitlist, gbc)
-
-        cbBlockchainCheck = JCheckBox("Query Blockchain.info")
-        panel0.add(cbBlockchainCheck, gbc)
-
-        return panel0
+        self.configPanel = FEA_BC_ConfigPanel()
+        return self.configPanel
 
 
 
@@ -395,3 +389,113 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
 
             def getTotalReceived(self):
                 return self.totalReceived
+
+
+class FEA_BC_ConfigPanel(JPanel):
+    
+    cbBlockchainCheck = None
+    tbHitlist = None
+    blockchainCheck = True
+    hitlist = "testlist"
+    maxTimeout = 5
+    tbMaxBCHits = None
+    
+    def __init__(self):
+
+        self.initComponents()
+        
+        #get previous settings selected by the user
+
+        if (ModuleSettings.getConfigSetting("FEA", "hitlist") != None) and (ModuleSettings.getConfigSetting("FEA","hitlist") != ""):
+            if ModuleSettings.getConfigSetting("FEA","hitlist"):
+                self.tbHitlist.text = ModuleSettings.getConfigSetting("FEA", "hitlist")
+            else:
+                self.tbHitlist.text = "testlist"
+
+        if (ModuleSettings.getConfigSetting("FEA", "maxTimeout") != None) and (ModuleSettings.getConfigSetting("FEA","maxTimeout") != ""):
+            if ModuleSettings.getConfigSetting("FEA","maxTimeout"):
+                self.tbMaxBCHits.text = ModuleSettings.getConfigSetting("FEA", "maxTimeout")
+            else:
+                self.tbMaxBCHits.text = "5"
+
+        if (ModuleSettings.getConfigSetting("FEA", "blockchainCheck") != None) and (ModuleSettings.getConfigSetting("FEA","blockchainCheck") != ""):
+            if ModuleSettings.getConfigSetting("FEA","blockchainCheck"):
+                self.cbBlockchainCheck.setSelected(True)
+                self.blockchainCheck = True
+            else:
+                self.cbBlockchainCheck.setSelected(False)
+                self.blockchainCheck = False
+
+    def addStatusLabel(self, msg):
+            gbc = GridBagConstraints()
+            gbc.anchor = GridBagConstraints.NORTHWEST
+            gbc.gridx = 0
+            gbc.gridy = 7
+            lab = JLabel(msg)
+            self.add(lab, gbc)
+
+    def getHitlist(self):
+        return self.hitlist
+
+    def getBlockchainCheck(self):
+        return self.blockchainCheck
+
+    def getMaxTimeout(self):
+        return self.maxTimeout
+
+    def initComponents(self):
+
+        self.setLayout(GridBagLayout())
+
+        gbc = GridBagConstraints()
+        gbc.anchor = GridBagConstraints.NORTHWEST
+        gbc.gridx = 0
+        gbc.gridy = 0
+
+        descriptionLabel = JLabel("FEA - BitCoin Validation module")
+        self.add(descriptionLabel, gbc)
+
+        tlHitlist = JLabel("Base list of hashes to analyze: ")
+        gbc.gridy = 1
+        self.add(tlHitlist, gbc)
+
+        self.tbHitlist = JTextField("testlist", 20)
+        self.tbHitlist.addActionListener(self.tbHitlistActionPerformed)
+        gbc.gridx = 1
+        self.add(self.tbHitlist, gbc)
+
+        gbc.gridx = 0
+        self.cbBlockchainCheck = JCheckBox("Query Blockchain.info", actionPerformed=self.cbBlockchainCheckActionPerformed)
+        self.cbBlockchainCheck.setSelected(True)
+        gbc.gridy = 2
+        self.add(self.cbBlockchainCheck, gbc)
+
+        tlBCMaxHits = JLabel("Timeout (in seconds) between calls to Blockchain.info: ")
+        gbc.gridy = 3
+        self.add(tlBCMaxHits, gbc)
+
+        self.tbMaxBCHits = JTextField("5", 5)
+        self.tbMaxBCHits.addActionListener(self.tbMaxBCHitsActionPerformed)
+        gbc.gridx = 1
+        self.add(self.tbMaxBCHits, gbc)
+        
+    def tbMaxBCHitsActionPerformed(self, event):
+        source = event.getSource()
+        self.maxTimeout = int(float(source.getText()))
+        ModuleSettings.setConfigSetting("FEA", "maxTimeout", self.maxTimeout)
+
+    def tbHitlistActionPerformed(self, event):
+        source = event.getSource()
+        self.hitlist = source.getText()
+        ModuleSettings.setConfigSetting("FEA", "hitlist", self.hitlist)
+
+    def cbBlockchainCheckActionPerformed(self, event):
+        source = event.getSource()
+        if(source.isSelected()):
+            ModuleSettings.setConfigSetting("FEA","blockchainCheck","true")
+            self.blockchainCheck = True
+        else:
+            ModuleSettings.setConfigSetting("FEA","blockchainCheck","false")
+            self.blockchainCheck = False
+
+
