@@ -25,7 +25,7 @@
 
 # Email processing report module for Autopsy.
 #
-# by Jo„o Mota
+# by Jo√£o Mota
 
 import os
 import inspect
@@ -47,20 +47,11 @@ from java.util.logging import Level
 
 from javax.swing import JPanel
 from javax.swing import JCheckBox
-from javax.swing import JButton
 from javax.swing import JSlider
-from javax.swing import ButtonGroup
-from javax.swing import JComboBox
-from javax.swing import JList
-from javax.swing import JTextArea
-from javax.swing import JTextField
 from javax.swing import JLabel
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
-from javax.swing import JScrollPane
-from javax.swing import JFileChooser
-from javax.swing.filechooser import FileNameExtensionFilter
 
 from org.sleuthkit.autopsy.casemodule import Case
 from org.sleuthkit.autopsy.casemodule.services import TagsManager
@@ -77,7 +68,7 @@ from org.sleuthkit.datamodel import BlackboardAttribute
 
 class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
-    moduleName = "FEA - Email Validation - v 1.0"
+    moduleName = "FEA - Email Validation - 1.0"
     
     # maximum number of concurrent threads to launch (used in domain lookup process)
     MAX_THREADS = 8
@@ -99,9 +90,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         return Case.getCurrentCase().getName() + "_FEA.csv"
 
 
-    # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
-    # The 'progressBar' object is of type ReportProgressPanel.
-    #   See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1report_1_1_report_progress_panel.html
     def generateReport(self, baseReportDir, progressBar):
 
 
@@ -127,9 +115,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.setIndeterminate(False)
         progressBar.start()
 
-        self.log(Level.INFO, "[JM] Reading config settings")
         MAX_THREADS = self.configPanel.getNumThreads()
-        self.log(Level.INFO, "[JM] Number of threads for DNS Lookup = " + str(MAX_THREADS))
 
         generateXLS = self.configPanel.getGenerateXLS()
         generateCSV = self.configPanel.getGenerateCSV()
@@ -146,7 +132,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.setMaximumProgress(progressTotal * 2 + 2)
 
         progressBar.increment()
-
 
         # Create Excel Workbook
         if generateXLS:
@@ -169,7 +154,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             sheetTruePositives.write(0,0,"Email", styleRowHeaders)
             sheetTruePositives.write(0,1,"Source", styleRowHeaders)
 
-
         # Open report file for writing
         if generateCSV:
             fileName = os.path.join(baseReportDir, self.getRelativeFilePath())
@@ -191,15 +175,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         #                                                                                                                       
         #                                                                                                                       
         # Get Blackboard artifacts
-        # Emails:
-        # display name: E-Mail Messages; ID: 13; type name: TSK_EMAIL_MSG
-        # display name: Accounts; ID: 21; type name: TSK_SERVICE_ACCOUNT
-        # display name: Accounts; ID: 39; type name: TSK_ACCOUNT
-        # attribute for sets of keywords: TSK_SET_NAME
         
         progressBar.updateStatusLabel("Retrieving emails from the Autopsy blackboard")
-
-        #self.log(Level.INFO, "List of TLDs:\n" + tldListHTML)
 
         for artifactItem in emailArtifacts:
 
@@ -241,9 +218,8 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             q_out_invalid = Queue()
             for url in reportDB.getListOfUniqueDomains():
                 q_in.put(url, block = True, timeout = 5)
-                #self.log(Level.INFO, "[JM] Adding domain to thread queue: " + url)
-            
-            self.log(Level.INFO, "[JM] Starting domain lookup threads")
+                
+            self.log(Level.INFO, "FEA: Launching domain lookup threads")
             
             thread_pool = list()
             for i in range(self.MAX_THREADS):
@@ -258,11 +234,9 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
             while not q_out_valid.empty():
                 url = q_out_valid.get()
                 reportDB.setDomains(url, True)
-                #self.log(Level.INFO, "[JM] Valid domain found: " + url)
             
             while not q_out_invalid.empty():
                 url = q_out_invalid.get()
-                #self.log(Level.INFO, "[JM] Invalid domain found: " + url)
                 reportDB.setDomains(url, False)
                 if doWBLookup:
                     progressBar.updateStatusLabel("Cross-checking invalid domain in the Wayback Machine (" + url + ")")
@@ -296,7 +270,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 report.write("\n")
             if generateXLS:
                 items = row.split(";")
-                # TODO: remove hardcoded range size to allow for future error-free updates to report columns
+                # fill 8 columns in report
                 for n in range(8):
                     sheetFalsePositives.write(baseCell,n,items[n])
             baseCell += 1
@@ -329,17 +303,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
         progressBar.complete(ReportStatus.COMPLETE)
 
 
-    #    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$$$$$
-    #   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|_  $$_/
-    #  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$  | $$  
-    #  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$  | $$  
-    #  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$  | $$  
-    #  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$  | $$  
-    #  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/ /$$$$$$
-    #   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |______/
-    #                                               /$$  \ $$                                  
-    #                                              |  $$$$$$/                                  
-    #                                               \______/                                   
+
     # *******************************************
     # * Function: implement config settings GUI *
     # *******************************************
@@ -504,7 +468,7 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
 
             def checkWayback(self):
                 
-                # url for Wayback machine
+                # url for Internet Archive / Wayback machine
                 urlWayback = 'http://archive.org/wayback/available'
 
                 if self.domainCheck == False:
@@ -516,7 +480,6 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                         closest = wayback_json['archived_snapshots']['closest']
                         archive_timestamp = closest.get('timestamp', None)
                         archive_url = closest.get('url', 'n.a.')
-                        #return (archive_timestamp, archive_url)
                         self.wb = archive_timestamp + ";" + archive_url
                     else:
                         self.wb = "NoRecord"
@@ -535,6 +498,19 @@ class EmailCCHitsReportModule(GeneralReportModuleAdapter):
                 if self.domainChecked:
                     domainCheckedStatus = "1"
                 return self.email + ";" + alphaCheckRes + ";" + self.getTLD() + ";"  + tldRes + ";" + self.getDomain() + ";" + domainCheckedStatus + ";" + domainRes + ";" + self.wb
+
+
+    #    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$$$$$
+    #   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|_  $$_/
+    #  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$  | $$  
+    #  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$  | $$  
+    #  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$  | $$  
+    #  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$  | $$  
+    #  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/ /$$$$$$
+    #   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |______/
+    #                                               /$$  \ $$                                  
+    #                                              |  $$$$$$/                                  
+    #                                               \______/                                   
 
 class FEA_ConfigPanel(JPanel):
     numThreads = 8
@@ -577,7 +553,6 @@ class FEA_ConfigPanel(JPanel):
         if (ModuleSettings.getConfigSetting("FEA", "numThreads") != None) and (ModuleSettings.getConfigSetting("FEA","numThreads") != ""):
             self.numThreads = ModuleSettings.getConfigSetting("FEA", "numThreads")
             self.numberThreadsSlider.setValue(self.numThreads)
-            #self.addStatusLabel("Read number of threads from previous config: " + self.numThreads)
         else:
             self.numThreads = self.numberThreadsSlider.getValue()
 
@@ -620,18 +595,7 @@ class FEA_ConfigPanel(JPanel):
         self.cbNSLookup.setSelected(True)
         self.add(self.cbNSLookup, gbc)
 
-
-        # TODO: include option to browse for list with emails to exclude from analysis
-
-        # blacklistLabel = JLabel("Email addresses to be excluded (blacklist):")
-        # gbc.gridy = 1
-        # panel0.add(blacklistLabel, gbc)
-
-        # blacklistTextArea = JTextArea()
-        # gbc.fill = GridBagConstraints.HORIZONTAL
-        # gbc.gridy = 2
-        # gbc.ipady = 40
-        # panel0.add(blacklistTextArea, gbc)
+        # TODO: include option to browse for text file with list of emails to exclude from analysis
 
         numberThreadsLabel = JLabel("Maximum number of threads for DNS Lookup task: ")
         gbc.gridy = 2

@@ -46,22 +46,13 @@ from org.sleuthkit.datamodel import BlackboardAttribute
 
 from org.sleuthkit.autopsy.coreutils import ModuleSettings
 from javax.swing import JCheckBox
-from javax.swing import JButton
 from javax.swing import JSlider
-from javax.swing import ButtonGroup
-from javax.swing import JComboBox
-from javax.swing import JList
-from javax.swing import JTextArea
 from javax.swing import JTextField
 from javax.swing import JLabel
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
 from javax.swing import JPanel
-from javax.swing import JScrollPane
-from javax.swing import JFileChooser
-from javax.swing.filechooser import FileNameExtensionFilter
-
 
 class CCHitsReportModule(GeneralReportModuleAdapter):
 
@@ -83,14 +74,7 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
     def getRelativeFilePath(self):
         return "FEA-CC-JM.csv"
 
-    # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
-    # The 'progressBar' object is of type ReportProgressPanel.
-    #   See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1report_1_1_report_progress_panel.html
     def generateReport(self, baseReportDir, progressBar):
-
-        self.log(Level.INFO, "*****************************************************")
-        self.log(Level.INFO, "* [JM] Scraping artifacts from blackboard starting  *")
-        self.log(Level.INFO, "*****************************************************")
 
         # configure progress bar
         progressBar.setIndeterminate(False)
@@ -129,17 +113,9 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
         artifactCount = 0
 
-        # Get Blackboard artifacts
-        # Emails:
-        # display name: E-Mail Messages; ID: 13; type name: TSK_EMAIL_MSG
-        # display name: Accounts; ID: 21; type name: TSK_SERVICE_ACCOUNT
-        # display name: Accounts; ID: 39; type name: TSK_ACCOUNT
-        # atributo para sets de keywords: TSK_SET_NAME
-
         for artifactItem in ccArtifacts:
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_CARD_NUMBER):
                 ccNumber = attributeItem.getDisplayString()
-                self.log(Level.INFO, "[JM] Credit card number: " + ccNumber)
                 sourceFiles = sleuthkitCase.findAllFilesWhere("obj_id = " + str(attributeItem.getParentArtifact().getObjectID()))
                 sourceFile = ""
                 for file in sourceFiles:
@@ -149,11 +125,9 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
                         sourceFile = sourceFile + " & " + file.getName()
 
                 valid = True
-                if self.is_luhn_valid(ccNumber):
-                    self.log(Level.INFO, "[JM] CC is valid")
-                else:
-                    self.log(Level.INFO, "[JM] CC is NOT valid")
+                if not self.is_luhn_valid(ccNumber):
                     valid = False
+                
                 if generateXLS:
                     baseCell += 1
                     sheetFalsePositives.write(baseCell,0, ccNumber)
@@ -162,6 +136,7 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
                     else:
                         sheetFalsePositives.write(baseCell,1, "Not Valid")
                     sheetFalsePositives.write(baseCell,2,sourceFile)
+
                 if generateCSV:
                     if valid:
                         report.write("%s;Valid\n" % ccNumber)
@@ -192,8 +167,6 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 #  | $$      | $$  | $$| $$  | $$| $$  | $$
 #  | $$$$$$$$|  $$$$$$/| $$  | $$| $$  | $$
 #  |________/ \______/ |__/  |__/|__/  |__/
-#                                          
-#                                          
 #                                          
 
     def digits_of(self, number):
@@ -235,11 +208,6 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
 class FEA_CC_ConfigPanel(JPanel):
 
-    # cbNSLookup = JCheckBox()
-    # cbGenerateCSV = JCheckBox()
-    # cbGenerateExcel = JCheckBox()
-    # numberThreadsSlider = JSlider()
-    
     generateXLS = True
     generateCSV = True
     removeFalsePositives = True

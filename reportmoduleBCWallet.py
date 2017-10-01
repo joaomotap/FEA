@@ -44,20 +44,12 @@ import time
 
 from javax.swing import JPanel
 from javax.swing import JCheckBox
-from javax.swing import JButton
-from javax.swing import JSlider
-from javax.swing import ButtonGroup
-from javax.swing import JComboBox
-from javax.swing import JList
 from javax.swing import JTextArea
 from javax.swing import JTextField
 from javax.swing import JLabel
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
-from javax.swing import JScrollPane
-from javax.swing import JFileChooser
-from javax.swing.filechooser import FileNameExtensionFilter
 
 from java.lang import Class
 from java.lang import System
@@ -90,14 +82,11 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         return self.moduleName
 
     def getDescription(self):
-        return "Bitcoin Wallet Reports - Generates reports regarding the presence of Bitcoin wallets or private keys in the ingested artifacts (please note this requires appropriate regexes to be setup in their own keyword search list as specified in the documentation)"
+        return "Reports on Bitcoin wallets/private keys (note: requires appropriate RegExes to be setup as specified in the documentation)"
 
     def getRelativeFilePath(self):
         return "FEA-BitCoin.txt"
 
-    # The 'baseReportDir' object being passed in is a string with the directory that reports are being stored in.   Report should go into baseReportDir + getRelativeFilePath().
-    # The 'progressBar' object is of type ReportProgressPanel.
-    #   See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1report_1_1_report_progress_panel.html
     def generateReport(self, baseReportDir, progressBar):
 
         # retrieve configuration settings
@@ -147,21 +136,17 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         for artifactItem in bcArtifacts:
             for attributeItem in artifactItem.getAttributes(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_KEYWORD):
                 bcAddress = attributeItem.getDisplayString()
-                self.log(Level.INFO, "[JM] Bitcoin Address: " + bcAddress)
-
+                
+                # Delay for accessing Blockchain.info not used on first iteration
                 if skipFirstTimeout:
                     skipFirstTimeout = False
                 else:
                     progressBar.updateStatusLabel("Waiting for %s secs before checking address %s with the Blockchain API" % (timeoutBlockchain, bcAddress))
                     time.sleep(timeoutBlockchain)
                 
-                progressBar.updateStatusLabel("Analyzing bitcoin Address: " + bcAddress)
+                progressBar.updateStatusLabel("Analyzing hash: " + bcAddress)
 
-                if not self.check_bc(bcAddress):
-                    self.log(Level.INFO, "[JM] Bitcoin address is not valid")
-                    #report.write("%s - not valid;\n" % bcAddress)
-                else:
-                    self.log(Level.INFO, "[JM] Bitcoin address is valid")
+                if self.check_bc(bcAddress):
                     if len(bcAddress) < 51:
                         if blockchainCheck:
                             balance, received, timeFirstSeen = self.checkBlockchain(bcAddress)
@@ -171,9 +156,9 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
                             recordDB.addBlockchainRecord(bcAddress, 0, 0, 0, 0)
                             report.write("Wallet address: %s (user opted out of Blockchain check)\n" % bcAddress)
                     else:
-                        self.log(Level.INFO, "[JM] Possible private key: " + bcAddress)
+                        # candidate private key found
                         candidatePublicAddress = self.getAddressFromPrivateKey(bcAddress)
-                        self.log(Level.INFO, "[JM] possible wallet address found: " + candidatePublicAddress)
+                        # candidate wallet address found
                         if self.check_bc(candidatePublicAddress):
                             balance, received, timeFirstSeen = self.checkBlockchain(candidatePublicAddress)
                             recordDB.addPrivateWallet(candidatePublicAddress, timeFirstSeen, balance, received, bcAddress)
@@ -226,19 +211,6 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
 
 
 
-
-#    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$
-#   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|__/
-#  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$ /$$
-#  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$| $$
-#  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$| $$
-#  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$| $$
-#  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/| $$
-#   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |__/
-#                                               /$$  \ $$                              
-#                                              |  $$$$$$/                              
-#                                               \______/                               
-
     # *******************************************
     # * Function: implement config settings GUI *
     # *******************************************
@@ -282,11 +254,9 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         
         # url for Blockchain API - simple queries
         urlBlockchain = 'https://blockchain.info'
-        # minimum number of confirmations to consider info valid
+        # minimum number of confirmations to consider information retrieved as valid
         numConfirmations = 6
 
-        # TODO: check for exceptions!
-        #self.log(Level.INFO, "Blockchain query: " + urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
         response = urllib2.urlopen(urlBlockchain + "/q/addressbalance/" + walletAddress + "?confirmations=" + str(numConfirmations))
         balance = json.load(response) / 100000000
 
@@ -303,7 +273,7 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
         return str(balance), str(received), reg
 
     def getAddressFromPrivateKey(self, wifpriv):
-
+        # generate public wallet address for private key from via elliptic curve algorithn
         t='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
         pk = sum([t.index(wifpriv[::-1][l])*(58**l) for l in range(len(wifpriv))])/(2**32)%(2**256)
 
@@ -390,6 +360,20 @@ class BCHitsReportModule(GeneralReportModuleAdapter):
             def getTotalReceived(self):
                 return self.totalReceived
 
+
+
+
+#    /$$$$$$                       /$$$$$$  /$$                  /$$$$$$  /$$   /$$ /$$
+#   /$$__  $$                     /$$__  $$|__/                 /$$__  $$| $$  | $$|__/
+#  | $$  \__/  /$$$$$$  /$$$$$$$ | $$  \__/ /$$  /$$$$$$       | $$  \__/| $$  | $$ /$$
+#  | $$       /$$__  $$| $$__  $$| $$$$    | $$ /$$__  $$      | $$ /$$$$| $$  | $$| $$
+#  | $$      | $$  \ $$| $$  \ $$| $$_/    | $$| $$  \ $$      | $$|_  $$| $$  | $$| $$
+#  | $$    $$| $$  | $$| $$  | $$| $$      | $$| $$  | $$      | $$  \ $$| $$  | $$| $$
+#  |  $$$$$$/|  $$$$$$/| $$  | $$| $$      | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$/| $$
+#   \______/  \______/ |__/  |__/|__/      |__/ \____  $$       \______/  \______/ |__/
+#                                               /$$  \ $$                              
+#                                              |  $$$$$$/                              
+#                                               \______/                               
 
 class FEA_BC_ConfigPanel(JPanel):
     
