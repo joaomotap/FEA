@@ -45,7 +45,7 @@ Therefore, three separate Jython scripts were developed, each with a configurati
 
 All of the modules were developed and tested with Autopsy for Windows version 4.3.0, dated July 19, 2016, version 4.4.0, dated May 30, 2017 and version 4.4.1, dated Aug 9, 2017.
 
-1. Email Report Module
+#### Email Report Module
 
 The goal of this report module is to perform additional validation of the strings captured as emails by the Keyword Search ingestion module, which puts results into the Blackboard as artifacts containing the attribute TSK\_SET\_NAME with the value "Email Addresses".
 
@@ -71,7 +71,7 @@ One of the simplest email address validation procedures that the Keyword Search 
 
 The report module implements the validation by crosschecking every domain against the appropriate regular expression:
 
-## ^[\_a-z0-9-]+(\.[\_a-z0-9-]+)\*@[a-z0-9-]+(\.[a-z0-9-]+)\*(\.[a-z]{2,4})
+##### ^[\_a-z0-9-]+(\.[\_a-z0-9-]+)\*@[a-z0-9-]+(\.[a-z0-9-]+)\*(\.[a-z]{2,4})
 
 1.
   3. Domain name validation
@@ -112,7 +112,7 @@ Depending on user preference, one or two files can be added to Autopsy's collect
 
 If the user has so decided in the report configuration dialog box, an Excel Workbook is generated with two distinct sub sheets containing this information, and which can be used for further filtering and processing.  This process relies on the xlwt pure Python open source package library, which is in turn based on the pyExcelerator package. Regardless of opting to generate an Excel report, a CSV file with the module's results is always added to Autopsy's reports list.
 
-2. Credit Card Accounts Report Module
+#### Credit Card Accounts Report Module
 
 A separate module was developed exclusively for addressing investigation of credit card numbers present in the forensic data source. Like it does for email addresses, Autopsy also provides a list of potential credit card numbers. The approach is similar to the previous module, and the Keyword Search module is used for obtaining the credit card numbers, which in terms of ingestion differ only in the attribute type added to the result set of artifacts (TSK\_ACCOUNT), and the attribute type of the string value with the actual numbers (TSK\_CARD\_NUMBER).
 
@@ -126,7 +126,7 @@ This process is widely used for validation of credit card numbers, and specified
 
 It is known that the algorithm if flawed with a transposition error, since transposing digits 09 for 90 cannot be detected, and therefore it cannot be relied upon for an absolute validation of the account numbers. Nevertheless, for the purposes of improving validation of false positives, it is an enhancement of the core features of Autopsy, and will contribute for enhancing data quality and reduce time needed for analysis.
 
-3. Bitcoin Addresses and Keys Report Module
+#### Bitcoin Addresses and Keys Report Module
 
 One other increasingly interesting type of artifact to be recovered from digital forensics analysis case files are those connected with cryptocurrencies, considering these are often associated with potentially malicious actions, or at least worthy of further investigation. Recent high profile and fast spreading ransomware making use of the anonymity provided by these potential payment gateways are a perfect example of the high interest in locating traces of Bitcoin addresses or even private keys that may be stored in the available data sources.
 
