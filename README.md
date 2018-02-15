@@ -1,6 +1,6 @@
 # FEA - Forensics Enhanced Analysis
 
-by João Mota (2017)
+by João Mota (2017) jm@void.software
 
 Report module for the Autopsy Forensic Analysis platform, developed in Jython, within
 the scope of the Computer Science Degree of the Escola Superior de Tecnologia e Gestão do
