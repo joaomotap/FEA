@@ -139,9 +139,9 @@ class CCHitsReportModule(GeneralReportModuleAdapter):
 
                 if generateCSV:
                     if valid:
-                        report.write("%s;Valid\n" % ccNumber)
+                        report.write("%s;Valid;%s\n" % (ccNumber,sourceFile))
                     else:
-                        report.write("%s;Not Valid\n" % ccNumber)
+                        report.write("%s;Not Valid;%s\n" % (ccNumber,sourceFile))
             artifactCount += 1
             progressBar.increment()
         if generateCSV:
